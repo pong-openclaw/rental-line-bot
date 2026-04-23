@@ -75,9 +75,13 @@ function thaiDate(iso) {
 function fmt(n) { return Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
 // ── Webhook ───────────────────────────────────────────────────────────────────
+let _lastHook = null;
+
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
   const sig = req.headers['x-line-signature'];
+  const computed = SECRET ? crypto.createHmac('sha256', SECRET).update(req.body).digest('base64') : 'NO_SECRET';
+  _lastHook = { time: new Date().toISOString(), sig, computed, match: sig === computed, body: req.body.toString().slice(0, 300) };
   let sigOk = false;
   try { sigOk = verifySig(req.body, sig); } catch(e) { console.log('❌ verifySig threw:', e.message); }
   if (!sigOk) {
@@ -172,6 +176,7 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
+app.get('/last-hook', (req, res) => res.json(_lastHook || { error: 'no webhook received yet' }));
 app.get('/', (req, res) => res.send('Rental LINE Bot ✅'));
 app.get('/env-check', (req, res) => res.json({
   SECRET_set: !!SECRET,
