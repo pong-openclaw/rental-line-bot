@@ -15,11 +15,14 @@ function verifySig(body, sig) {
   return crypto.createHmac('sha256', SECRET).update(body).digest('base64') === sig;
 }
 async function reply(replyToken, text) {
-  await fetch('https://api.line.me/v2/bot/message/reply', {
+  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ replyToken, messages: [{ type: 'text', text }] })
   });
+  const data = await res.json();
+  if (!res.ok) console.log('❌ Reply error:', JSON.stringify(data));
+  else console.log('✅ Reply sent');
 }
 
 // ── Parsers ───────────────────────────────────────────────────────────────────
@@ -75,7 +78,11 @@ function fmt(n) { return Number(n).toLocaleString('th-TH', { minimumFractionDigi
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
   const sig = req.headers['x-line-signature'];
-  if (!verifySig(req.body, sig)) return;
+  if (!verifySig(req.body, sig)) {
+    console.log('❌ Signature mismatch — sig:', sig);
+    return;
+  }
+  console.log('✅ Webhook received');
 
   const events = JSON.parse(req.body.toString()).events || [];
 
