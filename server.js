@@ -78,7 +78,9 @@ function fmt(n) { return Number(n).toLocaleString('th-TH', { minimumFractionDigi
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
   const sig = req.headers['x-line-signature'];
-  if (!verifySig(req.body, sig)) {
+  let sigOk = false;
+  try { sigOk = verifySig(req.body, sig); } catch(e) { console.log('❌ verifySig threw:', e.message); }
+  if (!sigOk) {
     console.log('❌ Signature mismatch — sig:', sig);
     return;
   }
@@ -157,6 +159,11 @@ app.post('/webhook', async (req, res) => {
         );
         continue;
       }
+
+      // ── Fallback ───────────────────────────────────────────────────────────
+      await reply(rt,
+        `ไม่เข้าใจครับ 😅 พิมพ์ "help" เพื่อดูวิธีใช้`
+      );
 
     } catch (err) {
       console.error('Error:', err);
