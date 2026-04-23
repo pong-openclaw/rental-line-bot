@@ -173,4 +173,10 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.get('/', (req, res) => res.send('Rental LINE Bot ✅'));
+app.get('/env-check', (req, res) => res.json({
+  SECRET_set: !!SECRET,
+  SECRET_len: SECRET ? SECRET.length : 0,
+  TOKEN_set: !!TOKEN,
+  TOKEN_len: TOKEN ? TOKEN.length : 0,
+}));
 app.listen(PORT, () => console.log(`Port ${PORT}`));
