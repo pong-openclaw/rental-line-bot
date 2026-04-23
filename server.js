@@ -14,6 +14,7 @@ app.use(express.json());
 function verifySig(body, sig) {
   return crypto.createHmac('sha256', SECRET).update(body).digest('base64') === sig;
 }
+let _lastReply = null;
 async function reply(replyToken, text) {
   const res = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
@@ -21,6 +22,7 @@ async function reply(replyToken, text) {
     body: JSON.stringify({ replyToken, messages: [{ type: 'text', text }] })
   });
   const data = await res.json();
+  _lastReply = { status: res.status, ok: res.ok, data, time: new Date().toISOString() };
   if (!res.ok) console.log('❌ Reply error:', JSON.stringify(data));
   else console.log('✅ Reply sent');
 }
@@ -176,7 +178,7 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-app.get('/last-hook', (req, res) => res.json(_lastHook || { error: 'no webhook received yet' }));
+app.get('/last-hook', (req, res) => res.json({ hook: _lastHook, reply: _lastReply }));
 app.get('/', (req, res) => res.send('Rental LINE Bot ✅'));
 app.get('/env-check', (req, res) => res.json({
   SECRET_set: !!SECRET,
