@@ -100,16 +100,18 @@ async function appendRubberSale(values) {
   return appendToSheet('ชีต1!A:M', values, RUBBER_SPREADSHEET_ID);
 }
 
+// ติดตามหนี้: A=วันที่ B=รายการ C=เบิกใหม่ D=คืนหนี้ E=ยอดคงเหลือ F=หมายเหตุ
 async function getWorkerBalance() {
-  const rows = await getValues('ชีต1!A:M', RUBBER_SPREADSHEET_ID);
-  const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
-  let balance = 0;
-  for (const r of data) {
-    const repay   = parseFloat(r[7])  || 0; // H: ชำระคืน
-    const advance = parseFloat(r[12]) || 0; // M: เบิกใหม่
-    balance += advance - repay;
-  }
-  return balance; // บวก = ไทค้างอยู่, ลบ = จ่ายเกินหรือเครดิต
+  const rows = await getValues('ติดตามหนี้!A:F', RUBBER_SPREADSHEET_ID);
+  const data = rows.filter(r => r[0] && r[0] !== 'วันที่' && r[4] !== undefined && r[4] !== '' && !isNaN(parseFloat(r[4])));
+  if (data.length === 0) return 0;
+  return parseFloat(data[data.length - 1][4]) || 0; // ยอดคงเหลือล่าสุด
+}
+
+async function appendDebtRecord(date, label, advance, repay, note = '') {
+  const prevBal = await getWorkerBalance();
+  const newBal  = +(prevBal + advance - repay).toFixed(2);
+  return appendToSheet('ติดตามหนี้!A:F', [date, label, advance || '', repay || '', newBal, note], RUBBER_SPREADSHEET_ID);
 }
 
 async function getRubberSummary() {
@@ -124,4 +126,4 @@ async function getRubberSummary() {
   return { totalKgGross, totalKgNet, totalBaht, ownerBaht, count: thisMonthRows.length };
 }
 
-module.exports = { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, appendRubberSale, getWorkerBalance, getRubberSummary };
+module.exports = { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary };

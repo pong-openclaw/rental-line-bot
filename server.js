@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto  = require('crypto');
-const { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, appendRubberSale, getWorkerBalance, getRubberSummary } = require('./sheets');
+const { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary } = require('./sheets');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -286,6 +286,9 @@ app.post('/webhook', async (req, res) => {
         const note       = `หัก ${moisture}% ความชื้น`;
         // A-M: วันที่, รวม, สุทธิ, ราคา, ยอดขาย, เจ้าของ, คนตัด, คืน, โอนเจ้าของ, คนตัดสุทธิ, ความชื้น, หมายเหตุ, เบิกใหม่
         await appendRubberSale([date, gross, net, price, total, halfOwner, halfWorker, repay, toOwner, workerNet, moisture, note, advance || '']);
+        // อัปเดต ติดตามหนี้
+        if (repay > 0) await appendDebtRecord(date, `คืนหนี้ รอบ ${date}`, 0, repay, '');
+        if (advance > 0) await appendDebtRecord(date, `เบิกใหม่ รอบ ${date}`, advance, 0, '');
         const bal = await getWorkerBalance();
         await reply(rt,
           `✅ บันทึกขายยางแล้ว\n\n`
@@ -311,6 +314,7 @@ app.post('/webhook', async (req, res) => {
         const date = new Date().toISOString().slice(0, 10);
         // บันทึกเป็นแถวพิเศษ: เบิกกลางรอบ (เฉพาะ column M)
         await appendRubberSale([date, '', '', '', '', '', '', '', '', '', '', 'เบิกกลางรอบ', amt]);
+        await appendDebtRecord(date, 'เบิกกลางรอบ', amt, 0, 'คนงานเบิกเงิน (ระหว่างรอบ)');
         const bal = await getWorkerBalance();
         await reply(rt, `✅ ไท เบิก ฿${fmt(amt)} แล้ว\n💳 ยอดค้างไท: ฿${fmt(bal)}`);
         continue;
@@ -329,6 +333,7 @@ app.post('/webhook', async (req, res) => {
         const date = new Date().toISOString().slice(0, 10);
         // บันทึกเป็นแถวพิเศษ: คืนกลางรอบ (เฉพาะ column H)
         await appendRubberSale([date, '', '', '', '', '', '', amt, '', '', '', 'คืนกลางรอบ', '']);
+        await appendDebtRecord(date, 'คืนกลางรอบ', 0, amt, '');
         const bal = await getWorkerBalance();
         await reply(rt, `✅ ไท คืน ฿${fmt(amt)} แล้ว\n💳 ยอดค้างไท: ฿${fmt(bal)}`);
         continue;
