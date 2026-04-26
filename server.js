@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto  = require('crypto');
-const { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary } = require('./sheets');
+const { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber } = require('./sheets');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -219,11 +219,11 @@ app.post('/webhook', async (req, res) => {
       // ── Rich Menu: สวนยาง ─────────────────────────────────────────────────
       if (/^สวนยาง$/i.test(text)) {
         const qr = { items: [
-          { type:'action', action:{ type:'message', label:'🌿 ขายยาง',   text:'ขายยาง' } },
+          { type:'action', action:{ type:'message', label:'🌿 ขายยาง',    text:'ขายยาง' } },
           { type:'action', action:{ type:'message', label:'👷 ไท เบิกเงิน', text:'เบิกเงิน' } },
-          { type:'action', action:{ type:'message', label:'💵 ไท คืนเงิน', text:'คืนเงิน' } },
-          { type:'action', action:{ type:'message', label:'📋 ยอดค้างไท', text:'ยอดค้างไท' } },
-          { type:'action', action:{ type:'message', label:'📊 สรุปยาง',  text:'สรุปยาง' } },
+          { type:'action', action:{ type:'message', label:'💵 ไท คืนเงิน',  text:'คืนเงิน' } },
+          { type:'action', action:{ type:'message', label:'📋 ยอดค้างไท',  text:'ยอดค้างไท' } },
+          { type:'action', action:{ type:'message', label:'📜 ประวัติยาง',  text:'ประวัติยาง' } },
         ]};
         await fetch('https://api.line.me/v2/bot/message/reply', {
           method:'POST', headers:{ Authorization:`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
@@ -353,16 +353,37 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
+      // ── สวนยาง: ประวัติยาง ───────────────────────────────────────────────
+      if (/^ประวัติยาง$/i.test(text)) {
+        const rows = await getRecentRubber(5);
+        if (rows.length === 0) { await reply(rt, '🌿 ยังไม่มีประวัติขายยางครับ'); continue; }
+        const TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+        const lines = rows.map(r => {
+          const d = new Date(r[0]);
+          const dateStr = `${d.getDate()} ${TH_M[d.getMonth()]} ${d.getFullYear()+543}`;
+          return `📅 ${dateStr}\n   ⚖️ ${r[2]} กก. × ฿${r[3]} = ฿${fmt(r[4])}`;
+        });
+        const bal = await getWorkerBalance();
+        await reply(rt, `📜 ประวัติขายยางล่าสุด\n\n${lines.join('\n\n')}\n\n💳 ยอดค้างไท: ฿${fmt(bal)}`);
+        continue;
+      }
+
       // ── สวนยาง: สรุปยาง ──────────────────────────────────────────────────
       if (/^สรุปยาง$/i.test(text)) {
         const [sum, bal] = await Promise.all([getRubberSummary(), getWorkerBalance()]);
+        const recentLines = sum.recent.map(r => {
+          const d = new Date(r.date);
+          const TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+          return `  • ${d.getDate()} ${TH_M[d.getMonth()]} ${d.getFullYear()+543}: ${r.net} กก. ฿${fmt(r.total)}`;
+        }).join('\n');
         await reply(rt,
-          `🌿 สรุปสวนยางเดือนนี้\n\n`
-          + `📦 ขาย ${sum.count} ครั้ง\n`
-          + `⚖️ รวม (กก.) ${sum.totalKgNet.toLocaleString('th-TH')} สุทธิ\n`
+          `🌿 สรุปสวนยาง ปี ${sum.year}\n\n`
+          + `📦 ขาย ${sum.count} รอบ\n`
+          + `⚖️ น้ำยางสุทธิ ${sum.totalKgNet.toLocaleString('th-TH')} กก.\n`
           + `💰 ยอดขายรวม ฿${fmt(sum.totalBaht)}\n`
-          + `🏠 เจ้าของได้รับ ฿${fmt(sum.ownerBaht)}\n\n`
-          + `👷 ยอดค้างไท: ฿${fmt(bal)}`
+          + `🏠 เจ้าของได้รับ ฿${fmt(sum.ownerBaht)}\n`
+          + (recentLines ? `\n📅 รอบล่าสุด:\n${recentLines}\n` : '')
+          + `\n💳 ยอดค้างไท: ฿${fmt(bal)}`
         );
         continue;
       }

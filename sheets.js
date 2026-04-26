@@ -103,9 +103,15 @@ async function appendRubberSale(values) {
 // ติดตามหนี้: A=วันที่ B=รายการ C=เบิกใหม่ D=คืนหนี้ E=ยอดคงเหลือ F=หมายเหตุ
 async function getWorkerBalance() {
   const rows = await getValues('ติดตามหนี้!A:F', RUBBER_SPREADSHEET_ID);
-  const data = rows.filter(r => r[0] && r[0] !== 'วันที่' && r[4] !== undefined && r[4] !== '' && !isNaN(parseFloat(r[4])));
-  if (data.length === 0) return 0;
-  return parseFloat(data[data.length - 1][4]) || 0; // ยอดคงเหลือล่าสุด
+  const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
+  // คำนวณจากผลรวม เบิก(C) - คืน(D) ทุกแถว — ไม่อ่านแถวสุดท้ายเพราะอาจมี #ERROR!
+  let balance = 0;
+  for (const r of data) {
+    const adv = parseFloat(r[2]) || 0; // C: เบิกใหม่
+    const rep = parseFloat(r[3]) || 0; // D: คืนหนี้
+    balance += adv - rep;
+  }
+  return +balance.toFixed(2);
 }
 
 async function appendDebtRecord(date, label, advance, repay, note = '') {
@@ -116,14 +122,24 @@ async function appendDebtRecord(date, label, advance, repay, note = '') {
 
 async function getRubberSummary() {
   const rows = await getValues('ชีต1!A:M', RUBBER_SPREADSHEET_ID);
-  const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
-  const thisMonth = new Date().toISOString().slice(0, 7);
-  const thisMonthRows = data.filter(r => r[0] && r[0].startsWith(thisMonth));
-  const totalKgGross = thisMonthRows.reduce((s, r) => s + (parseFloat(r[1]) || 0), 0);
-  const totalKgNet   = thisMonthRows.reduce((s, r) => s + (parseFloat(r[2]) || 0), 0);
-  const totalBaht    = thisMonthRows.reduce((s, r) => s + (parseFloat(r[4]) || 0), 0);
-  const ownerBaht    = thisMonthRows.reduce((s, r) => s + (parseFloat(r[5]) || 0), 0);
-  return { totalKgGross, totalKgNet, totalBaht, ownerBaht, count: thisMonthRows.length };
+  const data = rows.filter(r => r[0] && r[0] !== 'วันที่' && r[1]); // เฉพาะแถวที่มีน้ำหนัก
+  const thisYear = new Date().getFullYear().toString();
+  const yearRows = data.filter(r => r[0] && r[0].startsWith(thisYear));
+  const totalKgNet = yearRows.reduce((s, r) => s + (parseFloat(r[2]) || 0), 0);
+  const totalBaht  = yearRows.reduce((s, r) => s + (parseFloat(r[4]) || 0), 0);
+  const ownerBaht  = yearRows.reduce((s, r) => s + (parseFloat(r[5]) || 0), 0);
+  // รอบล่าสุด 3 รอบ
+  const recent = data.slice(-3).reverse().map(r => ({
+    date: r[0], net: parseFloat(r[2]) || 0,
+    price: parseFloat(r[3]) || 0, total: parseFloat(r[4]) || 0
+  }));
+  return { totalKgNet, totalBaht, ownerBaht, count: yearRows.length, recent, year: thisYear };
 }
 
-module.exports = { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary };
+async function getRecentRubber(n = 5) {
+  const rows = await getValues('ชีต1!A:M', RUBBER_SPREADSHEET_ID);
+  const data = rows.filter(r => r[0] && r[0] !== 'วันที่' && r[1]);
+  return data.slice(-n).reverse();
+}
+
+module.exports = { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber };
