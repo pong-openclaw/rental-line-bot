@@ -1,7 +1,8 @@
 const crypto = require('crypto');
 
 const SA = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
-const SPREADSHEET_ID = '1IWF5gZ_w0EqbMu5uAHMF4w3I6PAgxbKb_aMeRQNDXgE';
+const SPREADSHEET_ID        = '1IWF5gZ_w0EqbMu5uAHMF4w3I6PAgxbKb_aMeRQNDXgE'; // ห้องเช่า
+const RUBBER_SPREADSHEET_ID = '12N5-WXFkoKg06K7F5rGA0bfjHJJJZ06cIJ8oKy1WsmJ8'; // สวนยาง
 
 async function getToken() {
   const now = Math.floor(Date.now() / 1000);
@@ -22,20 +23,20 @@ async function getToken() {
   return data.access_token;
 }
 
-async function getValues(range) {
+async function getValues(range, spreadsheetId = SPREADSHEET_ID) {
   const token = await getToken();
   const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(range)}`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`,
     { headers: { 'Authorization': `Bearer ${token}` } }
   );
   const data = await res.json();
   return data.values || [];
 }
 
-async function appendToSheet(range, values) {
+async function appendToSheet(range, values, spreadsheetId = SPREADSHEET_ID) {
   const token = await getToken();
   const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -89,31 +90,38 @@ async function getLastWaterElecBill() {
   return { month: last[0], total: parseFloat(last[9]) || 0 };
 }
 
-// ── สวนยาง ────────────────────────────────────────────────────────────────────
-async function appendRubberSale(values) { return appendToSheet('ขายยาง!A:E', values); }
-async function appendWorker(values)     { return appendToSheet('คนงาน!A:E', values); }
+// ── สวนยาง (ชีต1 — 13 คอลัมน์ A-M) ──────────────────────────────────────────
+// A:วันที่ B:น้ำหนักรวม_กก C:น้ำหนักสุทธิ_กก D:ราคา_บาทต่อกก E:ยอดขายรวม_บาท
+// F:ส่วนแบ่งเจ้าของ_บาท G:ส่วนแบ่งคนตัด_บาท H:ชำระคืน_บาท
+// I:โอนให้เจ้าของ_บาท J:คนตัดรับสุทธิ_บาท K:ความชื้น_เปอร์เซ็นต์
+// L:หมายเหตุ M:เบิกใหม่_บาท
+
+async function appendRubberSale(values) {
+  return appendToSheet('ชีต1!A:M', values, RUBBER_SPREADSHEET_ID);
+}
 
 async function getWorkerBalance() {
-  const rows = await getValues('คนงาน!A:E');
+  const rows = await getValues('ชีต1!A:M', RUBBER_SPREADSHEET_ID);
   const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
   let balance = 0;
   for (const r of data) {
-    const type = r[2] || '';
-    const amt  = parseFloat(r[3]) || 0;
-    if (type === 'เบิก') balance += amt;
-    else if (type === 'คืน') balance -= amt;
+    const repay   = parseFloat(r[7])  || 0; // H: ชำระคืน
+    const advance = parseFloat(r[12]) || 0; // M: เบิกใหม่
+    balance += advance - repay;
   }
-  return balance; // บวก = ไทค้างอยู่, ลบ = จ่ายเกิน
+  return balance; // บวก = ไทค้างอยู่, ลบ = จ่ายเกินหรือเครดิต
 }
 
 async function getRubberSummary() {
-  const rows = await getValues('ขายยาง!A:E');
+  const rows = await getValues('ชีต1!A:M', RUBBER_SPREADSHEET_ID);
   const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
   const thisMonth = new Date().toISOString().slice(0, 7);
   const thisMonthRows = data.filter(r => r[0] && r[0].startsWith(thisMonth));
-  const totalKg    = thisMonthRows.reduce((s, r) => s + (parseFloat(r[1]) || 0), 0);
-  const totalBaht  = thisMonthRows.reduce((s, r) => s + (parseFloat(r[3]) || 0), 0);
-  return { totalKg, totalBaht, count: thisMonthRows.length };
+  const totalKgGross = thisMonthRows.reduce((s, r) => s + (parseFloat(r[1]) || 0), 0);
+  const totalKgNet   = thisMonthRows.reduce((s, r) => s + (parseFloat(r[2]) || 0), 0);
+  const totalBaht    = thisMonthRows.reduce((s, r) => s + (parseFloat(r[4]) || 0), 0);
+  const ownerBaht    = thisMonthRows.reduce((s, r) => s + (parseFloat(r[5]) || 0), 0);
+  return { totalKgGross, totalKgNet, totalBaht, ownerBaht, count: thisMonthRows.length };
 }
 
-module.exports = { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, appendRubberSale, appendWorker, getWorkerBalance, getRubberSummary };
+module.exports = { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, appendRubberSale, getWorkerBalance, getRubberSummary };
