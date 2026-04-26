@@ -200,6 +200,53 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
+      // ── Rich Menu: ห้องเช่า ──────────────────────────────────────────────
+      if (/^ห้องเช่า$/i.test(text)) {
+        const qr = { items: [
+          { type:'action', action:{ type:'message', label:'💰 ค่าเช่า',       text:'ค่าเช่า' } },
+          { type:'action', action:{ type:'message', label:'💧 บันทึกมิเตอร์', text:'บันทึกมิเตอร์' } },
+          { type:'action', action:{ type:'message', label:'💵 รับเงินแล้ว',   text:'รับเงินแล้ว' } },
+          { type:'action', action:{ type:'message', label:'⏰ ยอดค้าง',        text:'ยอดค้าง' } },
+          { type:'action', action:{ type:'message', label:'📊 สรุป',           text:'สรุป' } },
+        ]};
+        await fetch('https://api.line.me/v2/bot/message/reply', {
+          method:'POST', headers:{ Authorization:`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({ replyToken: rt, messages: [{ type:'text', text:'🏠 ห้องเช่า — เลือกได้เลยครับ', quickReply: qr }] })
+        });
+        continue;
+      }
+
+      // ── Rich Menu: สวนยาง ─────────────────────────────────────────────────
+      if (/^สวนยาง$/i.test(text)) {
+        const qr = { items: [
+          { type:'action', action:{ type:'message', label:'🌿 ขายยาง',   text:'ขายยาง' } },
+          { type:'action', action:{ type:'message', label:'👷 ไท เบิกเงิน', text:'เบิกเงิน' } },
+          { type:'action', action:{ type:'message', label:'💵 ไท คืนเงิน', text:'คืนเงิน' } },
+          { type:'action', action:{ type:'message', label:'📋 ยอดค้างไท', text:'ยอดค้างไท' } },
+          { type:'action', action:{ type:'message', label:'📊 สรุปยาง',  text:'สรุปยาง' } },
+        ]};
+        await fetch('https://api.line.me/v2/bot/message/reply', {
+          method:'POST', headers:{ Authorization:`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({ replyToken: rt, messages: [{ type:'text', text:'🌿 สวนยาง — เลือกได้เลยครับ', quickReply: qr }] })
+        });
+        continue;
+      }
+
+      // ── Rich Menu: ภาพรวม ─────────────────────────────────────────────────
+      if (/^ภาพรวม$/i.test(text)) {
+        const [sum, meters] = await Promise.all([getMonthlySummary(), getLastMeters()]);
+        const roomLines = Object.entries(sum.byRoom).map(([r,a]) => `  • ${r}: ฿${a.toLocaleString('th-TH')}`).join('\n');
+        await reply(rt,
+          `📊 ภาพรวมเดือนนี้\n\n`
+          + `🏠 ห้องเช่า: ฿${sum.total.toLocaleString('th-TH')}\n`
+          + (roomLines ? roomLines + '\n' : '')
+          + `\n💧 มิเตอร์น้ำ: ${meters.wPrev}\n`
+          + `⚡ มิเตอร์ไฟ: ${meters.ePrev}\n\n`
+          + `🌿 สวนยาง: (กด สวนยาง → สรุปยาง)`
+        );
+        continue;
+      }
+
       // ── ค่าเช่า shortcut (แสดงปุ่มห้อง) ─────────────────────────────────
       if (/^ค่าเช่า$|^เช่า$/i.test(text)) {
         const qr = {
