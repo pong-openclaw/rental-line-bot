@@ -16,11 +16,16 @@ function verifySig(body, sig) {
 }
 let _lastReply = null;
 const QR_RENTAL = { items: [
-  { type:'action', action:{ type:'message', label:'💰 ค่าเช่า',       text:'ค่าเช่า' } },
-  { type:'action', action:{ type:'message', label:'💧 บันทึกมิเตอร์', text:'บันทึกมิเตอร์' } },
-  { type:'action', action:{ type:'message', label:'💵 รับเงินแล้ว',   text:'รับเงินแล้ว' } },
-  { type:'action', action:{ type:'message', label:'⏰ ยอดค้าง',        text:'ยอดค้าง' } },
-  { type:'action', action:{ type:'message', label:'📊 สรุป',           text:'สรุป' } },
+  { type:'action', action:{ type:'message', label:'💰 รับเงิน',   text:'รับเงิน' } },
+  { type:'action', action:{ type:'message', label:'💧 น้ำ/ไฟ',    text:'บันทึกมิเตอร์' } },
+  { type:'action', action:{ type:'message', label:'⏰ ยอดค้าง',   text:'ยอดค้าง' } },
+  { type:'action', action:{ type:'message', label:'📊 สรุป',      text:'สรุป' } },
+  { type:'action', action:{ type:'message', label:'📋 ประวัติ',   text:'ประวัติรายรับ' } },
+]};
+const QR_INCOME = { items: [
+  { type:'action', action:{ type:'message', label:'🏠 ค่าเช่า',     text:'ค่าเช่า' } },
+  { type:'action', action:{ type:'message', label:'💵 รับเงินแล้ว', text:'รับเงินแล้ว' } },
+  { type:'action', action:{ type:'message', label:'↩️ กลับ',        text:'ห้องเช่า' } },
 ]};
 const QR_RUBBER = { items: [
   { type:'action', action:{ type:'message', label:'🌿 ขายยาง',     text:'ขายยาง' } },
@@ -122,7 +127,7 @@ app.post('/webhook', async (req, res) => {
     const rt     = ev.replyToken;
     const userId = ev.source?.userId || 'unknown';
     // คำสั่งหลัก — ล้าง session ทิ้งก่อนเสมอ ไม่สนว่ากำลังทำขั้นตอนอะไรอยู่
-    const MAIN_CMDS = /^(ห้องเช่า|สวนยาง|ภาพรวม|ค่าเช่า|เช่า|สรุป|รายรับ|มิเตอร์|ยอดค้าง|ยอดค้างไท|ประวัติยาง|สรุปยาง|ขายยาง|เบิกเงิน|คืนเงิน|บันทึกมิเตอร์|รับเงินแล้ว|help|ช่วย|วิธีใช้|menu|เมนู)$/i;
+    const MAIN_CMDS = /^(ห้องเช่า|สวนยาง|ภาพรวม|ค่าเช่า|เช่า|รับเงิน|ประวัติรายรับ|สรุป|รายรับ|มิเตอร์|ยอดค้าง|ยอดค้างไท|ประวัติยาง|สรุปยาง|ขายยาง|เบิกเงิน|คืนเงิน|บันทึกมิเตอร์|รับเงินแล้ว|help|ช่วย|วิธีใช้|menu|เมนู)$/i;
     if (MAIN_CMDS.test(text)) SESSION.delete(userId);
     let sess = SESSION.get(userId);
 
@@ -224,16 +229,34 @@ app.post('/webhook', async (req, res) => {
       // ── Rich Menu: ห้องเช่า ──────────────────────────────────────────────
       if (/^ห้องเช่า$/i.test(text)) {
         const qr = { items: [
-          { type:'action', action:{ type:'message', label:'💰 ค่าเช่า',       text:'ค่าเช่า' } },
-          { type:'action', action:{ type:'message', label:'💧 บันทึกมิเตอร์', text:'บันทึกมิเตอร์' } },
-          { type:'action', action:{ type:'message', label:'💵 รับเงินแล้ว',   text:'รับเงินแล้ว' } },
-          { type:'action', action:{ type:'message', label:'⏰ ยอดค้าง',        text:'ยอดค้าง' } },
-          { type:'action', action:{ type:'message', label:'📊 สรุป',           text:'สรุป' } },
+          { type:'action', action:{ type:'message', label:'💰 รับเงิน',   text:'รับเงิน' } },
+          { type:'action', action:{ type:'message', label:'💧 น้ำ/ไฟ',    text:'บันทึกมิเตอร์' } },
+          { type:'action', action:{ type:'message', label:'⏰ ยอดค้าง',   text:'ยอดค้าง' } },
+          { type:'action', action:{ type:'message', label:'📊 สรุป',      text:'สรุป' } },
+          { type:'action', action:{ type:'message', label:'📋 ประวัติ',   text:'ประวัติรายรับ' } },
         ]};
         await fetch('https://api.line.me/v2/bot/message/reply', {
           method:'POST', headers:{ Authorization:`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
           body: JSON.stringify({ replyToken: rt, messages: [{ type:'text', text:'🏠 ห้องเช่า — เลือกได้เลยครับ', quickReply: qr }] })
         });
+        continue;
+      }
+
+      // ── รับเงิน (sub-menu: ค่าเช่า + รับเงินแล้ว) ───────────────────────
+      if (/^รับเงิน$/i.test(text)) {
+        await fetch('https://api.line.me/v2/bot/message/reply', {
+          method:'POST', headers:{ Authorization:`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({ replyToken: rt, messages: [{ type:'text', text:'💰 รับเงิน — เลือกประเภทครับ', quickReply: QR_INCOME }] })
+        });
+        continue;
+      }
+
+      // ── ประวัติรายรับ ─────────────────────────────────────────────────────
+      if (/^ประวัติรายรับ$/i.test(text)) {
+        const rows = await getRecentIncome(8);
+        if (rows.length === 0) { await reply(rt, 'ยังไม่มีรายรับครับ', QR_RENTAL); continue; }
+        const lines = rows.map(r => `  ${r[0]} · ${r[1]} · ฿${(+r[3]).toLocaleString('th-TH')}`).join('\n');
+        await reply(rt, `📋 ประวัติรายรับล่าสุด\n\n${lines}`, QR_RENTAL);
         continue;
       }
 
