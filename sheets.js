@@ -2,7 +2,7 @@ const crypto = require('crypto');
 
 const SA = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
 const SPREADSHEET_ID        = '1IWF5gZ_w0EqbMu5uAHMF4w3I6PAgxbKb_aMeRQNDXgE'; // ห้องเช่า
-const RUBBER_SPREADSHEET_ID = '12N5-WXFkoKg06K7F5rGA0bfjHJJJZ06cIJ8oKy1WsmJ8'; // สวนยาง
+const RUBBER_SPREADSHEET_ID = '12N5-WXFkoKg06K7F5rGA0bfjHJJZ06cIJ8oKy1WsmJ8'; // สวนยาง
 
 async function getToken() {
   const now = Math.floor(Date.now() / 1000);

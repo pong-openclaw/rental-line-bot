@@ -582,7 +582,7 @@ app.get('/debug-rubber', async (req, res) => {
   try {
     const crypto = require('crypto');
     const SA = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
-    const RUBBER_ID = '12N5-WXFkoKg06K7F5rGA0bfjHJJJZ06cIJ8oKy1WsmJ8';
+    const RUBBER_ID = '12N5-WXFkoKg06K7F5rGA0bfjHJJZ06cIJ8oKy1WsmJ8';
     // get token
     const now = Math.floor(Date.now()/1000);
     const b64 = s => Buffer.from(typeof s==='string'?s:JSON.stringify(s)).toString('base64url');
