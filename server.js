@@ -578,6 +578,13 @@ app.get('/setup-richmenu', async (req, res) => {
   } catch (e) { res.status(500).send('❌ ' + e.message); }
 });
 
+app.get('/debug-rubber', async (req, res) => {
+  try {
+    const { getWorkerBalance, getRubberSummary, getRecentRubber } = require('./sheets');
+    const [bal, sum, recent] = await Promise.all([getWorkerBalance(), getRubberSummary(), getRecentRubber(3)]);
+    res.json({ balance: bal, summary: sum, recent });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 app.get('/', (req, res) => res.send('Rental LINE Bot ✅'));
 app.get('/sa-email', (req, res) => {
   try {
