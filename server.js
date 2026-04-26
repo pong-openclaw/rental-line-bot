@@ -16,7 +16,7 @@ function verifySig(body, sig) {
 }
 let _lastReply = null;
 const QUICK_REPLIES = {
-  items: ['สรุป','รายรับ','มิเตอร์','help'].map(label => ({
+  items: ['ค่าเช่า','บันทึกมิเตอร์','สรุป','รายรับ','help'].map(label => ({
     type: 'action',
     action: { type: 'message', label, text: label }
   }))
@@ -85,6 +85,9 @@ function thaiDate(iso) {
 function fmt(n) { return Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
 // ── Webhook ───────────────────────────────────────────────────────────────────
+// ── Session state (guided input) ─────────────────────────────────────────────
+const SESSION = new Map(); // userId → { step, data }
+
 let _lastHook = null;
 
 app.post('/webhook', async (req, res) => {
@@ -104,10 +107,50 @@ app.post('/webhook', async (req, res) => {
 
   for (const ev of events) {
     if (ev.type !== 'message' || ev.message.type !== 'text') continue;
-    const text = ev.message.text.trim();
-    const rt   = ev.replyToken;
+    const text   = ev.message.text.trim();
+    const rt     = ev.replyToken;
+    const userId = ev.source?.userId || 'unknown';
+    const sess   = SESSION.get(userId);
 
     try {
+      // ── Guided: รอมิเตอร์น้ำ ─────────────────────────────────────────────
+      if (sess?.step === 'water') {
+        const w = parseInt(text.replace(/,/g,''));
+        if (isNaN(w)) { await reply(rt, '❌ ใส่แค่ตัวเลขครับ เช่น 603'); continue; }
+        SESSION.set(userId, { step: 'elec', water: w });
+        await reply(rt, `⚡ มิเตอร์ไฟ = ? (ครั้งก่อน: ${sess.ePrev})`);
+        continue;
+      }
+
+      // ── Guided: รอมิเตอร์ไฟ ─────────────────────────────────────────────
+      if (sess?.step === 'elec') {
+        const e = parseInt(text.replace(/,/g,''));
+        if (isNaN(e)) { await reply(rt, '❌ ใส่แค่ตัวเลขครับ เช่น 4900'); continue; }
+        SESSION.delete(userId);
+        // คำนวณเหมือนเดิม
+        const wPrev = sess.wPrev, ePrev = sess.ePrev;
+        const wUnits = sess.water - wPrev;
+        const eUnits = e - ePrev;
+        const wCost  = +(wUnits * 19.3 * 1.07).toFixed(2);
+        const eCost  = +(eUnits * 3.85 * 1.32).toFixed(2);
+        const total  = +(wCost + eCost).toFixed(2);
+        const date   = new Date().toISOString().slice(0, 10);
+        const month  = thaiMonth(date);
+        await appendWaterElec([month, wPrev, sess.water, wUnits, wCost, ePrev, e, eUnits, eCost, total]);
+        const billUrl = `https://pong-openclaw.github.io/farm-dashboard/bill.html`
+          + `?wPrev=${wPrev}&wCurr=${sess.water}&ePrev=${ePrev}&eCurr=${e}`
+          + `&date=${date}&status=original`
+          + `&tenant=%E0%B8%99%E0%B8%B2%E0%B8%A2+%E0%B8%AA%E0%B8%B2%E0%B8%99%E0%B8%B4%E0%B8%95%E0%B8%A2%E0%B9%8C+%E0%B8%9A%E0%B8%B1%E0%B8%A7%E0%B8%AA%E0%B8%87%E0%B8%84%E0%B9%8C`;
+        await reply(rt,
+          `✅ บันทึกค่าน้ำไฟแล้ว\n\n`
+          + `💧 น้ำ: ${wPrev}→${sess.water} = ${wUnits} หน่วย → ฿${fmt(wCost)}\n`
+          + `⚡ ไฟ: ${ePrev}→${e} = ${eUnits} หน่วย → ฿${fmt(eCost)}\n`
+          + `💰 รวม: ฿${fmt(total)}\n\n`
+          + `🖨️ บิล:\n${billUrl}`
+        );
+        continue;
+      }
+
       // ── มิเตอร์น้ำไฟ ──────────────────────────────────────────────────────
       const meters = detectMeters(text);
       if (meters) {
@@ -175,6 +218,33 @@ app.post('/webhook', async (req, res) => {
           + `• ห้อง 3 (สานิตย์) → 8,000/เดือน\n`
           + `• คอนโด (KIARA) → 10,000/เดือน`
         );
+        continue;
+      }
+
+      // ── เริ่ม guided มิเตอร์ ─────────────────────────────────────────────
+      if (/บันทึกมิเตอร์|ใส่มิเตอร์|มิเตอร์ใหม่/i.test(text)) {
+        const { wPrev, ePrev } = await getLastMeters();
+        SESSION.set(userId, { step: 'water', wPrev, ePrev });
+        await reply(rt, `💧 มิเตอร์น้ำ = ? (ครั้งก่อน: ${wPrev})`);
+        continue;
+      }
+
+      // ── ค่าเช่า shortcut (แสดงปุ่มห้อง) ─────────────────────────────────
+      if (/^ค่าเช่า$|^เช่า$/i.test(text)) {
+        const qr = {
+          items: [
+            { type:'action', action:{ type:'message', label:'ห้อง 1 ฿3,500',  text:`รับค่าเช่าห้อง 1 3500` } },
+            { type:'action', action:{ type:'message', label:'ห้อง 2 ฿1,000',  text:`รับค่าเช่าห้อง 2 1000` } },
+            { type:'action', action:{ type:'message', label:'ห้อง 3 ฿8,000',  text:`รับค่าเช่าห้อง 3 8000` } },
+            { type:'action', action:{ type:'message', label:'คอนโด ฿10,000', text:`รับค่าเช่าคอนโด 10000` } },
+          ]
+        };
+        const msg = { type:'text', text:'เลือกห้องที่รับเงินครับ 👇', quickReply: qr };
+        await fetch('https://api.line.me/v2/bot/message/reply', {
+          method:'POST',
+          headers:{ 'Authorization':`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({ replyToken: rt, messages: [msg] })
+        });
         continue;
       }
 
