@@ -281,7 +281,7 @@ app.post('/webhook', async (req, res) => {
         SESSION.delete(userId);
         const { gross, moisture, net, price, total, halfOwner, halfWorker, repay } = sess;
         const toOwner    = +(halfOwner + repay).toFixed(2);
-        const workerNet  = +(halfWorker - repay + advance).toFixed(2); // ส่วนแบ่ง - คืน + เบิกใหม่
+        const workerNet  = +(halfWorker - repay).toFixed(2); // J = ส่วนแบ่งคนตัด - ชำระคืน (advance แยกต่างหาก)
         const date       = new Date().toISOString().slice(0, 10);
         const note       = `หัก ${moisture}% ความชื้น`;
         // A-M: วันที่, รวม, สุทธิ, ราคา, ยอดขาย, เจ้าของ, คนตัด, คืน, โอนเจ้าของ, คนตัดสุทธิ, ความชื้น, หมายเหตุ, เบิกใหม่

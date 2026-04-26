@@ -111,7 +111,7 @@ async function getWorkerBalance() {
 async function appendDebtRecord(date, label, advance, repay, note = '') {
   const prevBal = await getWorkerBalance();
   const newBal  = +(prevBal + advance - repay).toFixed(2);
-  return appendToSheet('ติดตามหนี้!A:F', [date, label, advance || '', repay || '', newBal, note], RUBBER_SPREADSHEET_ID);
+  return appendToSheet('ติดตามหนี้!A:F', [date, label, advance > 0 ? advance : 0, repay > 0 ? repay : 0, newBal, note], RUBBER_SPREADSHEET_ID);
 }
 
 async function getRubberSummary() {
