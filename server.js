@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto  = require('crypto');
-const { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary } = require('./sheets');
+const { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill } = require('./sheets');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -16,7 +16,7 @@ function verifySig(body, sig) {
 }
 let _lastReply = null;
 const QUICK_REPLIES = {
-  items: ['ค่าเช่า','บันทึกมิเตอร์','สรุป','รายรับ','help'].map(label => ({
+  items: ['ค่าเช่า','บันทึกมิเตอร์','รับเงินแล้ว','สรุป','รายรับ'].map(label => ({
     type: 'action',
     action: { type: 'message', label, text: label }
   }))
@@ -160,16 +160,14 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
-      // ── รับเงินค่าน้ำไฟแล้ว ──────────────────────────────────────────────
+      // ── รับเงินค่าน้ำไฟแล้ว (ใช้ได้ตลอด ดึงยอดจาก Sheets) ───────────────
       if (/รับเงินแล้ว/i.test(text)) {
-        const pending = sess?.step === 'pending_payment' ? sess : null;
-        if (pending) {
-          SESSION.delete(userId);
-          await appendRent([pending.date, pending.room, 'ค่าน้ำไฟ', pending.total, 'รับแล้ว', '']);
-          await reply(rt, `✅ บันทึกรับเงิน ฿${fmt(pending.total)} ค่าน้ำไฟ ${pending.room} แล้วครับ`);
-        } else {
-          await reply(rt, `ไม่พบยอดที่รอรับเงินครับ กด "บันทึกมิเตอร์" ก่อนนะครับ`);
-        }
+        const bill = await getLastWaterElecBill();
+        if (!bill) { await reply(rt, '❌ ไม่พบข้อมูลบิลครับ'); continue; }
+        const date = new Date().toISOString().slice(0, 10);
+        await appendRent([date, 'ห้อง 3', 'ค่าน้ำไฟ', bill.total, 'รับแล้ว', bill.month]);
+        SESSION.delete(userId);
+        await reply(rt, `✅ บันทึกรับเงิน ฿${fmt(bill.total)} ค่าน้ำไฟ ห้อง 3 (${bill.month}) แล้วครับ`);
         continue;
       }
 

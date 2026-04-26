@@ -80,4 +80,13 @@ async function getMonthlySummary() {
   return { total, byRoom, count: thisMonthRows.length };
 }
 
-module.exports = { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary };
+// ดึงบิลค่าน้ำไฟล่าสุด (สำหรับกด "รับเงินแล้ว" ทีหลัง)
+async function getLastWaterElecBill() {
+  const rows = await getValues('น้ำไฟ_ห้อง3!A:J');
+  const data = rows.filter(r => r[0] && r[0] !== 'เดือน/ปี' && r[0] !== 'ตัวอย่าง');
+  if (data.length === 0) return null;
+  const last = data[data.length - 1];
+  return { month: last[0], total: parseFloat(last[9]) || 0 };
+}
+
+module.exports = { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill };
