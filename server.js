@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto  = require('crypto');
-const { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber } = require('./sheets');
+const { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, isWaterBillPaid, appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber } = require('./sheets');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -458,19 +458,35 @@ app.post('/webhook', async (req, res) => {
 
       // ── ยอดค้างเดือนนี้ (ห้องเช่า) ───────────────────────────────────────
       if (/^ยอดค้าง$/i.test(text)) {
-        const rows = await getMonthlySummary();
-        const paid = rows.byRoom || {};
+        const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+        const now = new Date();
+        const monthName = THAI_MONTHS[now.getMonth() + 1];
+        const [summary, bill] = await Promise.all([getMonthlySummary(), getLastWaterElecBill()]);
+        const paid = summary.byRoom || {};
         const expected = { 'ห้อง 1': 3500, 'ห้อง 2': 1000, 'ห้อง 3': 8000, 'คอนโด': 10000 };
         const lines = Object.entries(expected).map(([room, amt]) => {
           const p = paid[room] || 0;
           return p >= amt ? `✅ ${room} — ฿${amt.toLocaleString('th-TH')} รับแล้ว`
                           : `❌ ${room} — ฿${amt.toLocaleString('th-TH')} ยังไม่ได้รับ`;
         });
-        const unpaid = Object.entries(expected).filter(([r, a]) => (paid[r] || 0) < a).reduce((s, [, a]) => s + a, 0);
+        let unpaid = Object.entries(expected).filter(([r, a]) => (paid[r] || 0) < a).reduce((s, [, a]) => s + a, 0);
+        // ตรวจสอบบิลค่าน้ำไฟ
+        let waterLine = '';
+        if (bill) {
+          const waterPaid = await isWaterBillPaid(bill.month);
+          if (waterPaid) {
+            waterLine = `✅ น้ำ/ไฟ (${bill.month}) — ฿${bill.total.toLocaleString('th-TH')} รับแล้ว`;
+          } else {
+            waterLine = `❌ น้ำ/ไฟ (${bill.month}) — ฿${bill.total.toLocaleString('th-TH')} ยังไม่ได้รับ`;
+            unpaid += bill.total;
+          }
+        }
         await reply(rt,
-          `⏰ ยอดค้างเดือนนี้\n\n`
+          `⏰ ยอดค้างเดือน${monthName}\n\n`
           + lines.join('\n')
-          + (unpaid > 0 ? `\n\n💰 รอรับอีก: ฿${unpaid.toLocaleString('th-TH')}` : '\n\n🎉 รับครบแล้ว!')
+          + (waterLine ? '\n' + waterLine : '')
+          + (unpaid > 0 ? `\n\n💰 รอรับอีก: ฿${unpaid.toLocaleString('th-TH')}` : '\n\n🎉 รับครบแล้ว!'),
+          QR_RENTAL
         );
         continue;
       }

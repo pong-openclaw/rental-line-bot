@@ -62,6 +62,13 @@ async function getLastMeters() {
 async function appendRent(values)      { return appendToSheet('รายรับ!A:F', values); }
 async function appendWaterElec(values) { return appendToSheet('น้ำไฟ_ห้อง3!A:J', values); }
 
+// ตรวจสอบว่าบิลค่าน้ำไฟรอบนั้นๆ ถูกบันทึกการรับเงินแล้วหรือยัง
+async function isWaterBillPaid(month) {
+  if (!month) return false;
+  const rows = await getValues('รายรับ!A:F');
+  return rows.some(r => r[2] === 'ค่าน้ำไฟ' && r[5] === month);
+}
+
 // ดึงรายรับล่าสุด N รายการ
 async function getRecentIncome(n = 5) {
   const rows = await getValues('รายรับ!A:F');
@@ -142,4 +149,4 @@ async function getRecentRubber(n = 5) {
   return data.slice(-n).reverse();
 }
 
-module.exports = { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber };
+module.exports = { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, isWaterBillPaid, appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber };
