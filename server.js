@@ -580,9 +580,26 @@ app.get('/setup-richmenu', async (req, res) => {
 
 app.get('/debug-rubber', async (req, res) => {
   try {
-    const { getWorkerBalance, getRubberSummary, getRecentRubber } = require('./sheets');
-    const [bal, sum, recent] = await Promise.all([getWorkerBalance(), getRubberSummary(), getRecentRubber(3)]);
-    res.json({ balance: bal, summary: sum, recent });
+    const crypto = require('crypto');
+    const SA = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+    const RUBBER_ID = '12N5-WXFkoKg06K7F5rGA0bfjHJJJZ06cIJ8oKy1WsmJ8';
+    // get token
+    const now = Math.floor(Date.now()/1000);
+    const b64 = s => Buffer.from(typeof s==='string'?s:JSON.stringify(s)).toString('base64url');
+    const header = b64({alg:'RS256',typ:'JWT'});
+    const claim  = b64({iss:SA.client_email,scope:'https://www.googleapis.com/auth/spreadsheets',aud:'https://oauth2.googleapis.com/token',exp:now+3600,iat:now});
+    const sign = crypto.createSign('RSA-SHA256'); sign.update(`${header}.${claim}`);
+    const jwt = `${header}.${claim}.${sign.sign(SA.private_key).toString('base64url')}`;
+    const tokRes = await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`});
+    const tokData = await tokRes.json();
+    if (!tokData.access_token) return res.json({error:'token failed', tokData});
+    // test read ติดตามหนี้
+    const r1 = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${RUBBER_ID}/values/${encodeURIComponent('ติดตามหนี้!A:F')}`,{headers:{Authorization:`Bearer ${tokData.access_token}`}});
+    const d1 = await r1.json();
+    // test read ชีต1
+    const r2 = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${RUBBER_ID}/values/${encodeURIComponent('ชีต1!A:E')}`,{headers:{Authorization:`Bearer ${tokData.access_token}`}});
+    const d2 = await r2.json();
+    res.json({ token_ok: true, debt_rows: d1.values?.length||0, debt_error: d1.error, sheet1_rows: d2.values?.length||0, sheet1_error: d2.error, rubber_id: RUBBER_ID });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/', (req, res) => res.send('Rental LINE Bot ✅'));
