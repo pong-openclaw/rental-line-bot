@@ -23,9 +23,17 @@ const QR_RENTAL = { items: [
   { type:'action', action:{ type:'message', label:'📋 ประวัติ',   text:'ประวัติรายรับ' } },
 ]};
 const QR_INCOME = { items: [
-  { type:'action', action:{ type:'message', label:'🏠 ค่าเช่า',     text:'ค่าเช่า' } },
-  { type:'action', action:{ type:'message', label:'💵 รับเงินแล้ว', text:'รับเงินแล้ว' } },
-  { type:'action', action:{ type:'message', label:'↩️ กลับ',        text:'ห้องเช่า' } },
+  { type:'action', action:{ type:'message', label:'🏠 ค่าเช่า',   text:'ค่าเช่า' } },
+  { type:'action', action:{ type:'message', label:'💧 ค่าน้ำ/ไฟ', text:'ค่าน้ำไฟ' } },
+  { type:'action', action:{ type:'message', label:'📋 ประวัติ',   text:'ประวัติรายรับ' } },
+  { type:'action', action:{ type:'message', label:'↩️ กลับ',      text:'ห้องเช่า' } },
+]};
+const QR_ROOMS = { items: [
+  { type:'action', action:{ type:'message', label:'ห้อง 1 ฿3,500',  text:'รับค่าเช่าห้อง 1 3500' } },
+  { type:'action', action:{ type:'message', label:'ห้อง 2 ฿1,000',  text:'รับค่าเช่าห้อง 2 1000' } },
+  { type:'action', action:{ type:'message', label:'ห้อง 3 ฿8,000',  text:'รับค่าเช่าห้อง 3 8000' } },
+  { type:'action', action:{ type:'message', label:'คอนโด ฿10,000',  text:'รับค่าเช่าคอนโด 10000' } },
+  { type:'action', action:{ type:'message', label:'↩️ กลับ',        text:'รับเงิน' } },
 ]};
 const QR_RUBBER = { items: [
   { type:'action', action:{ type:'message', label:'🌿 ขายยาง',     text:'ขายยาง' } },
@@ -127,7 +135,7 @@ app.post('/webhook', async (req, res) => {
     const rt     = ev.replyToken;
     const userId = ev.source?.userId || 'unknown';
     // คำสั่งหลัก — ล้าง session ทิ้งก่อนเสมอ ไม่สนว่ากำลังทำขั้นตอนอะไรอยู่
-    const MAIN_CMDS = /^(ห้องเช่า|สวนยาง|ภาพรวม|ค่าเช่า|เช่า|รับเงิน|ประวัติรายรับ|สรุป|รายรับ|มิเตอร์|ยอดค้าง|ยอดค้างไท|ประวัติยาง|สรุปยาง|ขายยาง|เบิกเงิน|คืนเงิน|บันทึกมิเตอร์|รับเงินแล้ว|help|ช่วย|วิธีใช้|menu|เมนู)$/i;
+    const MAIN_CMDS = /^(ห้องเช่า|สวนยาง|ภาพรวม|ค่าเช่า|เช่า|รับเงิน|ค่าน้ำไฟ|ประวัติรายรับ|สรุป|รายรับ|มิเตอร์|ยอดค้าง|ยอดค้างไท|ประวัติยาง|สรุปยาง|ขายยาง|เบิกเงิน|คืนเงิน|บันทึกมิเตอร์|รับเงินแล้ว|help|ช่วย|วิธีใช้|menu|เมนู)$/i;
     if (MAIN_CMDS.test(text)) SESSION.delete(userId);
     let sess = SESSION.get(userId);
 
@@ -242,11 +250,28 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
-      // ── รับเงิน (sub-menu: ค่าเช่า + รับเงินแล้ว) ───────────────────────
+      // ── รับเงิน (sub-menu หลัก) ──────────────────────────────────────────
       if (/^รับเงิน$/i.test(text)) {
         await fetch('https://api.line.me/v2/bot/message/reply', {
           method:'POST', headers:{ Authorization:`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
-          body: JSON.stringify({ replyToken: rt, messages: [{ type:'text', text:'💰 รับเงิน — เลือกประเภทครับ', quickReply: QR_INCOME }] })
+          body: JSON.stringify({ replyToken: rt, messages: [{ type:'text', text:'💰 รายรับ — เลือกประเภทครับ', quickReply: QR_INCOME }] })
+        });
+        continue;
+      }
+
+      // ── ค่าน้ำไฟ → รับเงินแล้วทันที ─────────────────────────────────────
+      if (/^ค่าน้ำไฟ$/i.test(text)) {
+        const bill = await getLastWaterElecBill();
+        if (!bill) { await reply(rt, '❌ ยังไม่มีบิลค่าน้ำไฟครับ', QR_INCOME); continue; }
+        await fetch('https://api.line.me/v2/bot/message/reply', {
+          method:'POST', headers:{ Authorization:`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({ replyToken: rt, messages: [{ type:'text',
+            text: `💧 ค่าน้ำ/ไฟ บิลล่าสุด\n\n📅 ${bill.month}\n💰 ฿${fmt(bill.total)}\n\nรับเงินแล้วหรือยัง?`,
+            quickReply: { items: [
+              { type:'action', action:{ type:'message', label:`✅ รับแล้ว ฿${fmt(bill.total)}`, text:'รับเงินแล้ว' } },
+              { type:'action', action:{ type:'message', label:'↩️ กลับ', text:'รับเงิน' } },
+            ]}
+          }] })
         });
         continue;
       }
@@ -465,21 +490,11 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
-      // ── ค่าเช่า shortcut (แสดงปุ่มห้อง) ─────────────────────────────────
+      // ── ค่าเช่า → แสดงปุ่มห้อง ──────────────────────────────────────────
       if (/^ค่าเช่า$|^เช่า$/i.test(text)) {
-        const qr = {
-          items: [
-            { type:'action', action:{ type:'message', label:'ห้อง 1 ฿3,500',  text:`รับค่าเช่าห้อง 1 3500` } },
-            { type:'action', action:{ type:'message', label:'ห้อง 2 ฿1,000',  text:`รับค่าเช่าห้อง 2 1000` } },
-            { type:'action', action:{ type:'message', label:'ห้อง 3 ฿8,000',  text:`รับค่าเช่าห้อง 3 8000` } },
-            { type:'action', action:{ type:'message', label:'คอนโด ฿10,000', text:`รับค่าเช่าคอนโด 10000` } },
-          ]
-        };
-        const msg = { type:'text', text:'เลือกห้องที่รับเงินครับ 👇', quickReply: qr };
         await fetch('https://api.line.me/v2/bot/message/reply', {
-          method:'POST',
-          headers:{ 'Authorization':`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
-          body: JSON.stringify({ replyToken: rt, messages: [msg] })
+          method:'POST', headers:{ Authorization:`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({ replyToken: rt, messages: [{ type:'text', text:'🏠 เลือกห้องที่รับเงินครับ', quickReply: QR_ROOMS }] })
         });
         continue;
       }
@@ -492,12 +507,13 @@ app.post('/webhook', async (req, res) => {
 
         if (room && amount) {
           await appendRent([date, room, 'ค่าเช่า', amount, 'รับแล้ว', '']);
-          await reply(rt, `✅ บันทึกค่าเช่า${room} ฿${amount.toLocaleString('th-TH')} วันที่ ${thaiDate(date)} แล้วครับ`);
+          await reply(rt, `✅ บันทึกค่าเช่า${room} ฿${amount.toLocaleString('th-TH')} วันที่ ${thaiDate(date)} แล้วครับ`, QR_INCOME);
         } else {
           await reply(rt,
             `⚠️ ระบุห้องหรือจำนวนไม่ได้ ลองใหม่ครับ เช่น:\n`
             + `"รับค่าเช่าคอนโด 10000 วันที่ 22/04/26"\n`
-            + `"รับค่าเช่าห้อง3 8000 5/4/26"`
+            + `"รับค่าเช่าห้อง3 8000 5/4/26"`,
+            QR_ROOMS
           );
         }
         continue;
