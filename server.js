@@ -311,6 +311,51 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.get('/last-hook', (req, res) => res.json({ hook: _lastHook, reply: _lastReply }));
+
+// ── Setup Rich Menu (เรียกครั้งเดียว) ────────────────────────────────────────
+app.get('/setup-richmenu', async (req, res) => {
+  try {
+    const fs = require('fs'), path = require('path');
+    const imgPath = path.join(__dirname, 'richmenu.png');
+    if (!fs.existsSync(imgPath)) return res.status(404).send('richmenu.png not found');
+
+    // ลบเมนูเก่า
+    const list = await fetch('https://api.line.me/v2/bot/richmenu/list', { headers: { Authorization: `Bearer ${TOKEN}` } }).then(r => r.json());
+    for (const m of (list.richmenus || [])) {
+      await fetch(`https://api.line.me/v2/bot/richmenu/${m.richMenuId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${TOKEN}` } });
+    }
+
+    // สร้าง Rich Menu
+    const menuRes = await fetch('https://api.line.me/v2/bot/richmenu', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        size: { width: 2500, height: 843 }, selected: true,
+        name: 'Main Menu', chatBarText: '📋 เมนู',
+        areas: [
+          { bounds: { x: 0,    y: 0, width: 833,  height: 843 }, action: { type: 'message', text: 'ห้องเช่า' } },
+          { bounds: { x: 833,  y: 0, width: 834,  height: 843 }, action: { type: 'message', text: 'สวนยาง'  } },
+          { bounds: { x: 1667, y: 0, width: 833,  height: 843 }, action: { type: 'message', text: 'ภาพรวม'  } },
+        ]
+      })
+    }).then(r => r.json());
+    if (!menuRes.richMenuId) return res.status(500).json({ error: menuRes });
+
+    // Upload รูป
+    const imgData = fs.readFileSync(imgPath);
+    await fetch(`https://api-data.line.me/v2/bot/richmenu/${menuRes.richMenuId}/content`, {
+      method: 'POST', headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'image/png' }, body: imgData
+    });
+
+    // ตั้ง default
+    await fetch(`https://api.line.me/v2/bot/user/all/richmenu/${menuRes.richMenuId}`, {
+      method: 'POST', headers: { Authorization: `Bearer ${TOKEN}` }
+    });
+
+    res.send('✅ Rich Menu พร้อมแล้ว! id: ' + menuRes.richMenuId);
+  } catch (e) { res.status(500).send('❌ ' + e.message); }
+});
+
 app.get('/', (req, res) => res.send('Rental LINE Bot ✅'));
 app.get('/env-check', (req, res) => res.json({
   SECRET_set: !!SECRET,
