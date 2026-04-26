@@ -110,7 +110,10 @@ app.post('/webhook', async (req, res) => {
     const text   = ev.message.text.trim();
     const rt     = ev.replyToken;
     const userId = ev.source?.userId || 'unknown';
-    const sess   = SESSION.get(userId);
+    // คำสั่งหลัก — ล้าง session ทิ้งก่อนเสมอ ไม่สนว่ากำลังทำขั้นตอนอะไรอยู่
+    const MAIN_CMDS = /^(ห้องเช่า|สวนยาง|ภาพรวม|ค่าเช่า|เช่า|สรุป|รายรับ|มิเตอร์|ยอดค้าง|ยอดค้างไท|ประวัติยาง|สรุปยาง|ขายยาง|เบิกเงิน|คืนเงิน|บันทึกมิเตอร์|รับเงินแล้ว|help|ช่วย|วิธีใช้|menu|เมนู)$/i;
+    if (MAIN_CMDS.test(text)) SESSION.delete(userId);
+    let sess = SESSION.get(userId);
 
     try {
       // ── Guided: รอมิเตอร์น้ำ ─────────────────────────────────────────────
