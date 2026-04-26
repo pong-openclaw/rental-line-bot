@@ -39,17 +39,17 @@ async function createImage() {
 
     <!-- ไอคอน + ข้อความ: ห้องเช่า -->
     <text x="416"  y="340" font-size="180" text-anchor="middle" dominant-baseline="middle">🏠</text>
-    <text x="416"  y="590" font-size="110" font-weight="bold" text-anchor="middle" fill="white" font-family="Tahoma,Arial,sans-serif">&#xE2B9;&#xE49;&#xE2D;&#xE07;&#xE40;&#xE0A;&#xE48;&#xE32;</text>
+    <text x="416"  y="590" font-size="110" font-weight="bold" text-anchor="middle" fill="white" font-family="Tahoma,Arial,sans-serif">ห้องเช่า</text>
     <text x="416"  y="730" font-size="70"  text-anchor="middle" fill="rgba(255,255,255,0.75)" font-family="Tahoma,Arial,sans-serif">RENTAL</text>
 
     <!-- ไอคอน + ข้อความ: สวนยาง -->
     <text x="1250" y="340" font-size="180" text-anchor="middle" dominant-baseline="middle">🌿</text>
-    <text x="1250" y="590" font-size="110" font-weight="bold" text-anchor="middle" fill="white" font-family="Tahoma,Arial,sans-serif">&#xE2A;&#xE27;&#xE19;&#xE22;&#xE32;&#xE07;</text>
+    <text x="1250" y="590" font-size="110" font-weight="bold" text-anchor="middle" fill="white" font-family="Tahoma,Arial,sans-serif">สวนยาง</text>
     <text x="1250" y="730" font-size="70"  text-anchor="middle" fill="rgba(255,255,255,0.75)" font-family="Tahoma,Arial,sans-serif">RUBBER</text>
 
     <!-- ไอคอน + ข้อความ: ภาพรวม -->
     <text x="2083" y="340" font-size="180" text-anchor="middle" dominant-baseline="middle">📊</text>
-    <text x="2083" y="590" font-size="110" font-weight="bold" text-anchor="middle" fill="white" font-family="Tahoma,Arial,sans-serif">&#xE20;&#xE32;&#xE1E;&#xE23;&#xE27;&#xE21;</text>
+    <text x="2083" y="590" font-size="110" font-weight="bold" text-anchor="middle" fill="white" font-family="Tahoma,Arial,sans-serif">ภาพรวม</text>
     <text x="2083" y="730" font-size="70"  text-anchor="middle" fill="rgba(255,255,255,0.75)" font-family="Tahoma,Arial,sans-serif">OVERVIEW</text>
   </svg>`;
 

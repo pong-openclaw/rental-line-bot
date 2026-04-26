@@ -232,6 +232,25 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
+      // ── ยอดค้างเดือนนี้ ───────────────────────────────────────────────────
+      if (/^ยอดค้าง$/i.test(text)) {
+        const rows = await getMonthlySummary();
+        const paid = rows.byRoom || {};
+        const expected = { 'ห้อง 1': 3500, 'ห้อง 2': 1000, 'ห้อง 3': 8000, 'คอนโด': 10000 };
+        const lines = Object.entries(expected).map(([room, amt]) => {
+          const p = paid[room] || 0;
+          return p >= amt ? `✅ ${room} — ฿${amt.toLocaleString('th-TH')} รับแล้ว`
+                          : `❌ ${room} — ฿${amt.toLocaleString('th-TH')} ยังไม่ได้รับ`;
+        });
+        const unpaid = Object.entries(expected).filter(([r, a]) => (paid[r] || 0) < a).reduce((s, [, a]) => s + a, 0);
+        await reply(rt,
+          `⏰ ยอดค้างเดือนนี้\n\n`
+          + lines.join('\n')
+          + (unpaid > 0 ? `\n\n💰 รอรับอีก: ฿${unpaid.toLocaleString('th-TH')}` : '\n\n🎉 รับครบแล้ว!')
+        );
+        continue;
+      }
+
       // ── Rich Menu: ภาพรวม ─────────────────────────────────────────────────
       if (/^ภาพรวม$/i.test(text)) {
         const [sum, meters] = await Promise.all([getMonthlySummary(), getLastMeters()]);
