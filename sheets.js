@@ -61,4 +61,23 @@ async function getLastMeters() {
 async function appendRent(values)      { return appendToSheet('รายรับ!A:F', values); }
 async function appendWaterElec(values) { return appendToSheet('น้ำไฟ_ห้อง3!A:J', values); }
 
-module.exports = { appendRent, appendWaterElec, getLastMeters };
+// ดึงรายรับล่าสุด N รายการ
+async function getRecentIncome(n = 5) {
+  const rows = await getValues('รายรับ!A:F');
+  const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
+  return data.slice(-n);
+}
+
+// สรุปรายรับเดือนนี้
+async function getMonthlySummary() {
+  const rows = await getValues('รายรับ!A:F');
+  const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const thisMonthRows = data.filter(r => r[0] && r[0].startsWith(thisMonth));
+  const total = thisMonthRows.reduce((s, r) => s + (+r[3] || 0), 0);
+  const byRoom = {};
+  thisMonthRows.forEach(r => { byRoom[r[1]] = (byRoom[r[1]] || 0) + (+r[3] || 0); });
+  return { total, byRoom, count: thisMonthRows.length };
+}
+
+module.exports = { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary };

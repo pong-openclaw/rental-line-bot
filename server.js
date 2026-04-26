@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto  = require('crypto');
-const { appendRent, appendWaterElec, getLastMeters } = require('./sheets');
+const { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary } = require('./sheets');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -152,6 +152,10 @@ app.post('/webhook', async (req, res) => {
       if (/help|ช่วย|วิธีใช้|menu|เมนู/i.test(text)) {
         await reply(rt,
           `📋 ระบบบัญชีห้องเช่า\n\n`
+          + `📊 ดูข้อมูล:\n`
+          + `"สรุป" → รายรับเดือนนี้ + มิเตอร์\n`
+          + `"รายรับ" → รายการล่าสุด 5 รายการ\n`
+          + `"มิเตอร์" → มิเตอร์น้ำ/ไฟปัจจุบัน\n\n`
           + `💰 บันทึกค่าเช่า:\n`
           + `"รับค่าเช่าคอนโด 10000 22/04/26"\n`
           + `"รับค่าเช่าห้อง3 8000 5/4/26"\n\n`
@@ -163,6 +167,36 @@ app.post('/webhook', async (req, res) => {
           + `• ห้อง 3 (สานิตย์) → 8,000/เดือน\n`
           + `• คอนโด (KIARA) → 10,000/เดือน`
         );
+        continue;
+      }
+
+      // ── สรุปเดือนนี้ ──────────────────────────────────────────────────────
+      if (/สรุป|summary|ภาพรวม/i.test(text)) {
+        const [sum, meters] = await Promise.all([getMonthlySummary(), getLastMeters()]);
+        const roomLines = Object.entries(sum.byRoom).map(([r, a]) => `  • ${r}: ฿${a.toLocaleString('th-TH')}`).join('\n');
+        await reply(rt,
+          `📊 สรุปเดือนนี้\n\n`
+          + `💰 รายรับ: ฿${sum.total.toLocaleString('th-TH')} (${sum.count} รายการ)\n`
+          + (roomLines ? roomLines + '\n' : '')
+          + `\n💧 มิเตอร์น้ำปัจจุบัน: ${meters.wPrev}\n`
+          + `⚡ มิเตอร์ไฟปัจจุบัน: ${meters.ePrev}`
+        );
+        continue;
+      }
+
+      // ── รายรับล่าสุด ──────────────────────────────────────────────────────
+      if (/รายรับ|ประวัติ|ล่าสุด/i.test(text)) {
+        const rows = await getRecentIncome(5);
+        if (rows.length === 0) { await reply(rt, 'ยังไม่มีรายรับครับ'); continue; }
+        const lines = rows.map(r => `  ${r[0]} · ${r[1]} · ฿${(+r[3]).toLocaleString('th-TH')}`).join('\n');
+        await reply(rt, `💰 รายรับล่าสุด 5 รายการ:\n\n${lines}`);
+        continue;
+      }
+
+      // ── มิเตอร์ ───────────────────────────────────────────────────────────
+      if (/มิเตอร์|meter/i.test(text)) {
+        const m = await getLastMeters();
+        await reply(rt, `🔢 มิเตอร์ปัจจุบัน\n\n💧 น้ำ: ${m.wPrev}\n⚡ ไฟ: ${m.ePrev}`);
         continue;
       }
 
