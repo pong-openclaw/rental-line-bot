@@ -200,6 +200,25 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
+      // ── ค่าเช่า shortcut (แสดงปุ่มห้อง) ─────────────────────────────────
+      if (/^ค่าเช่า$|^เช่า$/i.test(text)) {
+        const qr = {
+          items: [
+            { type:'action', action:{ type:'message', label:'ห้อง 1 ฿3,500',  text:`รับค่าเช่าห้อง 1 3500` } },
+            { type:'action', action:{ type:'message', label:'ห้อง 2 ฿1,000',  text:`รับค่าเช่าห้อง 2 1000` } },
+            { type:'action', action:{ type:'message', label:'ห้อง 3 ฿8,000',  text:`รับค่าเช่าห้อง 3 8000` } },
+            { type:'action', action:{ type:'message', label:'คอนโด ฿10,000', text:`รับค่าเช่าคอนโด 10000` } },
+          ]
+        };
+        const msg = { type:'text', text:'เลือกห้องที่รับเงินครับ 👇', quickReply: qr };
+        await fetch('https://api.line.me/v2/bot/message/reply', {
+          method:'POST',
+          headers:{ 'Authorization':`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({ replyToken: rt, messages: [msg] })
+        });
+        continue;
+      }
+
       // ── ค่าเช่า ────────────────────────────────────────────────────────────
       if (/ค่าเช่า|รับเงิน|จ่ายแล้ว|รับค่า|โอนแล้ว/i.test(text)) {
         const room   = detectRoom(text);
@@ -246,25 +265,6 @@ app.post('/webhook', async (req, res) => {
         const { wPrev, ePrev } = await getLastMeters();
         SESSION.set(userId, { step: 'water', wPrev, ePrev });
         await reply(rt, `💧 มิเตอร์น้ำ = ? (ครั้งก่อน: ${wPrev})`);
-        continue;
-      }
-
-      // ── ค่าเช่า shortcut (แสดงปุ่มห้อง) ─────────────────────────────────
-      if (/^ค่าเช่า$|^เช่า$/i.test(text)) {
-        const qr = {
-          items: [
-            { type:'action', action:{ type:'message', label:'ห้อง 1 ฿3,500',  text:`รับค่าเช่าห้อง 1 3500` } },
-            { type:'action', action:{ type:'message', label:'ห้อง 2 ฿1,000',  text:`รับค่าเช่าห้อง 2 1000` } },
-            { type:'action', action:{ type:'message', label:'ห้อง 3 ฿8,000',  text:`รับค่าเช่าห้อง 3 8000` } },
-            { type:'action', action:{ type:'message', label:'คอนโด ฿10,000', text:`รับค่าเช่าคอนโด 10000` } },
-          ]
-        };
-        const msg = { type:'text', text:'เลือกห้องที่รับเงินครับ 👇', quickReply: qr };
-        await fetch('https://api.line.me/v2/bot/message/reply', {
-          method:'POST',
-          headers:{ 'Authorization':`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
-          body: JSON.stringify({ replyToken: rt, messages: [msg] })
-        });
         continue;
       }
 
