@@ -127,7 +127,6 @@ app.post('/webhook', async (req, res) => {
         const e = parseInt(text.replace(/,/g,''));
         if (isNaN(e)) { await reply(rt, '❌ ใส่แค่ตัวเลขครับ เช่น 4900'); continue; }
         SESSION.delete(userId);
-        // คำนวณเหมือนเดิม
         const wPrev = sess.wPrev, ePrev = sess.ePrev;
         const wUnits = sess.water - wPrev;
         const eUnits = e - ePrev;
@@ -137,17 +136,40 @@ app.post('/webhook', async (req, res) => {
         const date   = new Date().toISOString().slice(0, 10);
         const month  = thaiMonth(date);
         await appendWaterElec([month, wPrev, sess.water, wUnits, wCost, ePrev, e, eUnits, eCost, total]);
+        // เก็บยอดไว้รอกด "รับเงินแล้ว"
+        SESSION.set(userId, { step: 'pending_payment', total, date, room: 'ห้อง 3' });
         const billUrl = `https://pong-openclaw.github.io/farm-dashboard/bill.html`
           + `?wPrev=${wPrev}&wCurr=${sess.water}&ePrev=${ePrev}&eCurr=${e}`
           + `&date=${date}&status=original`
           + `&tenant=%E0%B8%99%E0%B8%B2%E0%B8%A2+%E0%B8%AA%E0%B8%B2%E0%B8%99%E0%B8%B4%E0%B8%95%E0%B8%A2%E0%B9%8C+%E0%B8%9A%E0%B8%B1%E0%B8%A7%E0%B8%AA%E0%B8%87%E0%B8%84%E0%B9%8C`;
-        await reply(rt,
+        const qr = { items: [
+          { type:'action', action:{ type:'message', label:`✅ รับเงินแล้ว ฿${fmt(total)}`, text:'รับเงินแล้ว' } },
+          ...QUICK_REPLIES.items
+        ]};
+        const msg = { type:'text', quickReply: qr, text:
           `✅ บันทึกค่าน้ำไฟแล้ว\n\n`
           + `💧 น้ำ: ${wPrev}→${sess.water} = ${wUnits} หน่วย → ฿${fmt(wCost)}\n`
           + `⚡ ไฟ: ${ePrev}→${e} = ${eUnits} หน่วย → ฿${fmt(eCost)}\n`
           + `💰 รวม: ฿${fmt(total)}\n\n`
           + `🖨️ บิล:\n${billUrl}`
-        );
+        };
+        await fetch('https://api.line.me/v2/bot/message/reply',{
+          method:'POST', headers:{'Authorization':`Bearer ${TOKEN}`,'Content-Type':'application/json'},
+          body: JSON.stringify({ replyToken: rt, messages: [msg] })
+        });
+        continue;
+      }
+
+      // ── รับเงินค่าน้ำไฟแล้ว ──────────────────────────────────────────────
+      if (/รับเงินแล้ว/i.test(text)) {
+        const pending = sess?.step === 'pending_payment' ? sess : null;
+        if (pending) {
+          SESSION.delete(userId);
+          await appendRent([pending.date, pending.room, 'ค่าน้ำไฟ', pending.total, 'รับแล้ว', '']);
+          await reply(rt, `✅ บันทึกรับเงิน ฿${fmt(pending.total)} ค่าน้ำไฟ ${pending.room} แล้วครับ`);
+        } else {
+          await reply(rt, `ไม่พบยอดที่รอรับเงินครับ กด "บันทึกมิเตอร์" ก่อนนะครับ`);
+        }
         continue;
       }
 
