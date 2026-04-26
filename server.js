@@ -280,7 +280,10 @@ app.post('/webhook', async (req, res) => {
       if (/^ประวัติรายรับ$/i.test(text)) {
         const rows = await getRecentIncome(8);
         if (rows.length === 0) { await reply(rt, 'ยังไม่มีรายรับครับ', QR_RENTAL); continue; }
-        const lines = rows.map(r => `  ${r[0]} · ${r[1]} · ฿${(+r[3]).toLocaleString('th-TH')}`).join('\n');
+        const lines = rows.map(r => {
+          const type = r[2] === 'ค่าน้ำไฟ' ? ' · 💧น้ำ/ไฟ' : '';
+          return `  ${r[0]} · ${r[1]}${type} · ฿${(+r[3]).toLocaleString('th-TH')}`;
+        }).join('\n');
         await reply(rt, `📋 ประวัติรายรับล่าสุด\n\n${lines}`, QR_RENTAL);
         continue;
       }
