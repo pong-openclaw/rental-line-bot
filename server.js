@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto  = require('crypto');
-const { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill } = require('./sheets');
+const { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, appendRubberSale, appendWorker, getWorkerBalance, getRubberSummary } = require('./sheets');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -232,7 +232,97 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
-      // ── ยอดค้างเดือนนี้ ───────────────────────────────────────────────────
+      // ── สวนยาง: ขายยาง (guided) ──────────────────────────────────────────
+      if (/^ขายยาง$/i.test(text)) {
+        SESSION.set(userId, { step: 'rubber_kg' });
+        await reply(rt, '🌿 ขายยาง\n\nน้ำยางกี่ กก.? (ใส่แค่ตัวเลข)');
+        continue;
+      }
+      if (sess?.step === 'rubber_kg') {
+        const kg = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(kg) || kg <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 45.5'); continue; }
+        SESSION.set(userId, { step: 'rubber_price', kg });
+        await reply(rt, `✅ ${kg} กก.\n\nราคา กก.ละ? (บาท)`);
+        continue;
+      }
+      if (sess?.step === 'rubber_price') {
+        const price = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(price) || price <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 52'); continue; }
+        SESSION.delete(userId);
+        const kg    = sess.kg;
+        const total = +(kg * price).toFixed(2);
+        const date  = new Date().toISOString().slice(0, 10);
+        await appendRubberSale([date, kg, price, total, '']);
+        await reply(rt,
+          `✅ บันทึกขายยางแล้ว\n\n`
+          + `🌿 ${kg} กก. × ฿${price}/กก.\n`
+          + `💰 รวม: ฿${fmt(total)}`
+        );
+        continue;
+      }
+
+      // ── สวนยาง: เบิกเงินไท ───────────────────────────────────────────────
+      if (/^เบิกเงิน$/i.test(text)) {
+        SESSION.set(userId, { step: 'worker_draw' });
+        await reply(rt, '👷 ไท เบิกเงินเท่าไหร่? (บาท)');
+        continue;
+      }
+      if (sess?.step === 'worker_draw') {
+        const amt = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ'); continue; }
+        SESSION.delete(userId);
+        const date = new Date().toISOString().slice(0, 10);
+        await appendWorker([date, 'ไท', 'เบิก', amt, '']);
+        const bal = await getWorkerBalance();
+        await reply(rt, `✅ ไท เบิก ฿${fmt(amt)} แล้ว\n💳 ยอดค้างไท: ฿${fmt(bal)}`);
+        continue;
+      }
+
+      // ── สวนยาง: คืนเงินไท ────────────────────────────────────────────────
+      if (/^คืนเงิน$/i.test(text)) {
+        SESSION.set(userId, { step: 'worker_repay' });
+        await reply(rt, '💵 ไท คืนเงินเท่าไหร่? (บาท)');
+        continue;
+      }
+      if (sess?.step === 'worker_repay') {
+        const amt = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ'); continue; }
+        SESSION.delete(userId);
+        const date = new Date().toISOString().slice(0, 10);
+        await appendWorker([date, 'ไท', 'คืน', amt, '']);
+        const bal = await getWorkerBalance();
+        await reply(rt, `✅ ไท คืน ฿${fmt(amt)} แล้ว\n💳 ยอดค้างไท: ฿${fmt(bal)}`);
+        continue;
+      }
+
+      // ── สวนยาง: ยอดค้างไท ────────────────────────────────────────────────
+      if (/^ยอดค้างไท$/i.test(text)) {
+        const bal = await getWorkerBalance();
+        await reply(rt,
+          `💳 ยอดค้างไท\n\n`
+          + (bal > 0
+            ? `❌ ไท ค้างอยู่: ฿${fmt(bal)}`
+            : bal < 0
+            ? `✅ จ่ายเกิน ฿${fmt(Math.abs(bal))} (ไท ยังมีเครดิต)`
+            : `✅ ไม่มียอดค้าง`)
+        );
+        continue;
+      }
+
+      // ── สวนยาง: สรุปยาง ──────────────────────────────────────────────────
+      if (/^สรุปยาง$/i.test(text)) {
+        const [sum, bal] = await Promise.all([getRubberSummary(), getWorkerBalance()]);
+        await reply(rt,
+          `🌿 สรุปสวนยางเดือนนี้\n\n`
+          + `📦 ขาย ${sum.count} ครั้ง\n`
+          + `⚖️ รวม ${sum.totalKg.toLocaleString('th-TH')} กก.\n`
+          + `💰 รวม ฿${fmt(sum.totalBaht)}\n\n`
+          + `👷 ไท ค้างอยู่: ฿${fmt(bal)}`
+        );
+        continue;
+      }
+
+      // ── ยอดค้างเดือนนี้ (ห้องเช่า) ───────────────────────────────────────
       if (/^ยอดค้าง$/i.test(text)) {
         const rows = await getMonthlySummary();
         const paid = rows.byRoom || {};

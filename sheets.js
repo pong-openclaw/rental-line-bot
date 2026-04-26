@@ -89,4 +89,31 @@ async function getLastWaterElecBill() {
   return { month: last[0], total: parseFloat(last[9]) || 0 };
 }
 
-module.exports = { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill };
+// ── สวนยาง ────────────────────────────────────────────────────────────────────
+async function appendRubberSale(values) { return appendToSheet('ขายยาง!A:E', values); }
+async function appendWorker(values)     { return appendToSheet('คนงาน!A:E', values); }
+
+async function getWorkerBalance() {
+  const rows = await getValues('คนงาน!A:E');
+  const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
+  let balance = 0;
+  for (const r of data) {
+    const type = r[2] || '';
+    const amt  = parseFloat(r[3]) || 0;
+    if (type === 'เบิก') balance += amt;
+    else if (type === 'คืน') balance -= amt;
+  }
+  return balance; // บวก = ไทค้างอยู่, ลบ = จ่ายเกิน
+}
+
+async function getRubberSummary() {
+  const rows = await getValues('ขายยาง!A:E');
+  const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const thisMonthRows = data.filter(r => r[0] && r[0].startsWith(thisMonth));
+  const totalKg    = thisMonthRows.reduce((s, r) => s + (parseFloat(r[1]) || 0), 0);
+  const totalBaht  = thisMonthRows.reduce((s, r) => s + (parseFloat(r[3]) || 0), 0);
+  return { totalKg, totalBaht, count: thisMonthRows.length };
+}
+
+module.exports = { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, appendRubberSale, appendWorker, getWorkerBalance, getRubberSummary };
