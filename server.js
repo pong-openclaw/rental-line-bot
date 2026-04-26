@@ -15,11 +15,19 @@ function verifySig(body, sig) {
   return crypto.createHmac('sha256', SECRET).update(body).digest('base64') === sig;
 }
 let _lastReply = null;
+const QUICK_REPLIES = {
+  items: ['สรุป','รายรับ','มิเตอร์','help'].map(label => ({
+    type: 'action',
+    action: { type: 'message', label, text: label }
+  }))
+};
+
 async function reply(replyToken, text) {
+  const message = { type: 'text', text, quickReply: QUICK_REPLIES };
   const res = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ replyToken, messages: [{ type: 'text', text }] })
+    body: JSON.stringify({ replyToken, messages: [message] })
   });
   const data = await res.json();
   _lastReply = { status: res.status, ok: res.ok, data, time: new Date().toISOString() };
