@@ -15,15 +15,26 @@ function verifySig(body, sig) {
   return crypto.createHmac('sha256', SECRET).update(body).digest('base64') === sig;
 }
 let _lastReply = null;
-const QUICK_REPLIES = {
-  items: ['ค่าเช่า','บันทึกมิเตอร์','รับเงินแล้ว','สรุป','รายรับ'].map(label => ({
-    type: 'action',
-    action: { type: 'message', label, text: label }
-  }))
-};
+const QR_RENTAL = { items: [
+  { type:'action', action:{ type:'message', label:'💰 ค่าเช่า',       text:'ค่าเช่า' } },
+  { type:'action', action:{ type:'message', label:'💧 บันทึกมิเตอร์', text:'บันทึกมิเตอร์' } },
+  { type:'action', action:{ type:'message', label:'💵 รับเงินแล้ว',   text:'รับเงินแล้ว' } },
+  { type:'action', action:{ type:'message', label:'⏰ ยอดค้าง',        text:'ยอดค้าง' } },
+  { type:'action', action:{ type:'message', label:'📊 สรุป',           text:'สรุป' } },
+]};
+const QR_RUBBER = { items: [
+  { type:'action', action:{ type:'message', label:'🌿 ขายยาง',     text:'ขายยาง' } },
+  { type:'action', action:{ type:'message', label:'👷 เบิกเงิน',   text:'เบิกเงิน' } },
+  { type:'action', action:{ type:'message', label:'💵 คืนเงิน',    text:'คืนเงิน' } },
+  { type:'action', action:{ type:'message', label:'💳 ยอดค้างไท',  text:'ยอดค้างไท' } },
+  { type:'action', action:{ type:'message', label:'📜 ประวัติยาง', text:'ประวัติยาง' } },
+]};
+const QR_GUIDED = { items: [
+  { type:'action', action:{ type:'message', label:'❌ ยกเลิก', text:'ยกเลิก' } },
+]};
 
-async function reply(replyToken, text) {
-  const message = { type: 'text', text, quickReply: QUICK_REPLIES };
+async function reply(replyToken, text, qr = QR_RENTAL) {
+  const message = { type: 'text', text, quickReply: qr };
   const res = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
@@ -116,19 +127,26 @@ app.post('/webhook', async (req, res) => {
     let sess = SESSION.get(userId);
 
     try {
+      // ── ยกเลิก guided flow ───────────────────────────────────────────────
+      if (/^ยกเลิก$/i.test(text)) {
+        SESSION.delete(userId);
+        await reply(rt, '↩️ ยกเลิกแล้วครับ', QR_RENTAL);
+        continue;
+      }
+
       // ── Guided: รอมิเตอร์น้ำ ─────────────────────────────────────────────
       if (sess?.step === 'water') {
         const w = parseInt(text.replace(/,/g,''));
-        if (isNaN(w)) { await reply(rt, '❌ ใส่แค่ตัวเลขครับ เช่น 603'); continue; }
-        SESSION.set(userId, { step: 'elec', water: w });
-        await reply(rt, `⚡ มิเตอร์ไฟ = ? (ครั้งก่อน: ${sess.ePrev})`);
+        if (isNaN(w)) { await reply(rt, '❌ ใส่แค่ตัวเลขครับ เช่น 603', QR_GUIDED); continue; }
+        SESSION.set(userId, { step: 'elec', water: w, wPrev: sess.wPrev, ePrev: sess.ePrev });
+        await reply(rt, `⚡ มิเตอร์ไฟ = ? (ครั้งก่อน: ${sess.ePrev})`, QR_GUIDED);
         continue;
       }
 
       // ── Guided: รอมิเตอร์ไฟ ─────────────────────────────────────────────
       if (sess?.step === 'elec') {
         const e = parseInt(text.replace(/,/g,''));
-        if (isNaN(e)) { await reply(rt, '❌ ใส่แค่ตัวเลขครับ เช่น 4900'); continue; }
+        if (isNaN(e)) { await reply(rt, '❌ ใส่แค่ตัวเลขครับ เช่น 4900', QR_GUIDED); continue; }
         SESSION.delete(userId);
         const wPrev = sess.wPrev, ePrev = sess.ePrev;
         const wUnits = sess.water - wPrev;
@@ -147,7 +165,7 @@ app.post('/webhook', async (req, res) => {
           + `&tenant=%E0%B8%99%E0%B8%B2%E0%B8%A2+%E0%B8%AA%E0%B8%B2%E0%B8%99%E0%B8%B4%E0%B8%95%E0%B8%A2%E0%B9%8C+%E0%B8%9A%E0%B8%B1%E0%B8%A7%E0%B8%AA%E0%B8%87%E0%B8%84%E0%B9%8C`;
         const qr = { items: [
           { type:'action', action:{ type:'message', label:`✅ รับเงินแล้ว ฿${fmt(total)}`, text:'รับเงินแล้ว' } },
-          ...QUICK_REPLIES.items
+          ...QR_RENTAL.items
         ]};
         const msg = { type:'text', quickReply: qr, text:
           `✅ บันทึกค่าน้ำไฟแล้ว\n\n`
@@ -238,27 +256,27 @@ app.post('/webhook', async (req, res) => {
       // ── สวนยาง: ขายยาง (guided 4 ขั้น) ──────────────────────────────────
       if (/^ขายยาง$/i.test(text)) {
         SESSION.set(userId, { step: 'rubber_gross' });
-        await reply(rt, '🌿 ขายยาง\n\n⚖️ น้ำหนักรวม (กก.)? เช่น 365');
+        await reply(rt, '🌿 ขายยาง\n\n⚖️ น้ำหนักรวม (กก.)? เช่น 365', QR_GUIDED);
         continue;
       }
       if (sess?.step === 'rubber_gross') {
         const gross = parseFloat(text.replace(/,/g, ''));
-        if (isNaN(gross) || gross <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 365'); continue; }
+        if (isNaN(gross) || gross <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 365', QR_GUIDED); continue; }
         SESSION.set(userId, { ...sess, step: 'rubber_moisture', gross });
-        await reply(rt, `✅ รวม ${gross} กก.\n\n💧 ความชื้น (%)? เช่น 20`);
+        await reply(rt, `✅ รวม ${gross} กก.\n\n💧 ความชื้น (%)? เช่น 20`, QR_GUIDED);
         continue;
       }
       if (sess?.step === 'rubber_moisture') {
         const moisture = parseFloat(text.replace(/,/g, '').replace(/%/g, ''));
-        if (isNaN(moisture) || moisture < 0 || moisture > 60) { await reply(rt, '❌ ใส่ตัวเลข % ครับ เช่น 20'); continue; }
+        if (isNaN(moisture) || moisture < 0 || moisture > 60) { await reply(rt, '❌ ใส่ตัวเลข % ครับ เช่น 20', QR_GUIDED); continue; }
         const net = +((sess.gross * (1 - moisture / 100)).toFixed(1));
         SESSION.set(userId, { ...sess, step: 'rubber_price', moisture, net });
-        await reply(rt, `✅ หัก ${moisture}% → สุทธิ ${net} กก.\n\n💵 ราคา/กก.? เช่น 38`);
+        await reply(rt, `✅ หัก ${moisture}% → สุทธิ ${net} กก.\n\n💵 ราคา/กก.? เช่น 38`, QR_GUIDED);
         continue;
       }
       if (sess?.step === 'rubber_price') {
         const price = parseFloat(text.replace(/,/g, ''));
-        if (isNaN(price) || price <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 38'); continue; }
+        if (isNaN(price) || price <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 38', QR_GUIDED); continue; }
         const total      = +(sess.net * price).toFixed(2);
         const halfOwner  = +(total / 2).toFixed(2);
         const halfWorker = +(total - halfOwner).toFixed(2);
@@ -267,20 +285,21 @@ app.post('/webhook', async (req, res) => {
           `✅ ยอดขาย ฿${fmt(total)}\n`
           + `  🏠 เจ้าของ ฿${fmt(halfOwner)}\n`
           + `  👷 ไท ฿${fmt(halfWorker)}\n\n`
-          + `💳 ไทคืนเงินรอบนี้? (บาท หรือ 0)`
+          + `💳 ไทคืนเงินรอบนี้? (บาท หรือ 0)`,
+          QR_GUIDED
         );
         continue;
       }
       if (sess?.step === 'rubber_repay') {
         const repay = parseFloat(text.replace(/,/g, '')) || 0;
-        if (isNaN(repay) || repay < 0) { await reply(rt, '❌ ใส่ตัวเลขครับ หรือ 0'); continue; }
+        if (isNaN(repay) || repay < 0) { await reply(rt, '❌ ใส่ตัวเลขครับ หรือ 0', QR_GUIDED); continue; }
         SESSION.set(userId, { ...sess, step: 'rubber_advance', repay });
-        await reply(rt, `✅ คืน ฿${fmt(repay)}\n\n📥 ไทเบิกใหม่รอบนี้? (บาท หรือ 0)`);
+        await reply(rt, `✅ คืน ฿${fmt(repay)}\n\n📥 ไทเบิกใหม่รอบนี้? (บาท หรือ 0)`, QR_GUIDED);
         continue;
       }
       if (sess?.step === 'rubber_advance') {
         const advance = parseFloat(text.replace(/,/g, '')) || 0;
-        if (isNaN(advance) || advance < 0) { await reply(rt, '❌ ใส่ตัวเลขครับ หรือ 0'); continue; }
+        if (isNaN(advance) || advance < 0) { await reply(rt, '❌ ใส่ตัวเลขครับ หรือ 0', QR_GUIDED); continue; }
         SESSION.delete(userId);
         const { gross, moisture, net, price, total, halfOwner, halfWorker, repay } = sess;
         const toOwner    = +(halfOwner + repay).toFixed(2);
@@ -299,7 +318,8 @@ app.post('/webhook', async (req, res) => {
           + `💵 ฿${price}/กก. = ฿${fmt(total)}\n`
           + `🏠 โอนเจ้าของ: ฿${fmt(toOwner)}\n`
           + `👷 ไทได้รับ: ฿${fmt(workerNet)}\n\n`
-          + `💳 ยอดค้างไท: ฿${fmt(bal)}`
+          + `💳 ยอดค้างไท: ฿${fmt(bal)}`,
+          QR_RUBBER
         );
         continue;
       }
@@ -307,38 +327,36 @@ app.post('/webhook', async (req, res) => {
       // ── สวนยาง: เบิกเงินไท (กลางรอบ) ───────────────────────────────────
       if (/^เบิกเงิน$/i.test(text)) {
         SESSION.set(userId, { step: 'worker_draw' });
-        await reply(rt, '👷 ไท เบิกเงินเท่าไหร่? (บาท)');
+        await reply(rt, '👷 ไท เบิกเงินเท่าไหร่? (บาท)', QR_GUIDED);
         continue;
       }
       if (sess?.step === 'worker_draw') {
         const amt = parseFloat(text.replace(/,/g, ''));
-        if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ'); continue; }
+        if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ', QR_GUIDED); continue; }
         SESSION.delete(userId);
         const date = new Date().toISOString().slice(0, 10);
-        // บันทึกเป็นแถวพิเศษ: เบิกกลางรอบ (เฉพาะ column M)
         await appendRubberSale([date, '', '', '', '', '', '', '', '', '', '', 'เบิกกลางรอบ', amt]);
         await appendDebtRecord(date, 'เบิกกลางรอบ', amt, 0, 'คนงานเบิกเงิน (ระหว่างรอบ)');
         const bal = await getWorkerBalance();
-        await reply(rt, `✅ ไท เบิก ฿${fmt(amt)} แล้ว\n💳 ยอดค้างไท: ฿${fmt(bal)}`);
+        await reply(rt, `✅ ไท เบิก ฿${fmt(amt)} แล้ว\n💳 ยอดค้างไท: ฿${fmt(bal)}`, QR_RUBBER);
         continue;
       }
 
       // ── สวนยาง: คืนเงินไท (กลางรอบ) ─────────────────────────────────────
       if (/^คืนเงิน$/i.test(text)) {
         SESSION.set(userId, { step: 'worker_repay' });
-        await reply(rt, '💵 ไท คืนเงินเท่าไหร่? (บาท)');
+        await reply(rt, '💵 ไท คืนเงินเท่าไหร่? (บาท)', QR_GUIDED);
         continue;
       }
       if (sess?.step === 'worker_repay') {
         const amt = parseFloat(text.replace(/,/g, ''));
-        if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ'); continue; }
+        if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ', QR_GUIDED); continue; }
         SESSION.delete(userId);
         const date = new Date().toISOString().slice(0, 10);
-        // บันทึกเป็นแถวพิเศษ: คืนกลางรอบ (เฉพาะ column H)
         await appendRubberSale([date, '', '', '', '', '', '', amt, '', '', '', 'คืนกลางรอบ', '']);
         await appendDebtRecord(date, 'คืนกลางรอบ', 0, amt, '');
         const bal = await getWorkerBalance();
-        await reply(rt, `✅ ไท คืน ฿${fmt(amt)} แล้ว\n💳 ยอดค้างไท: ฿${fmt(bal)}`);
+        await reply(rt, `✅ ไท คืน ฿${fmt(amt)} แล้ว\n💳 ยอดค้างไท: ฿${fmt(bal)}`, QR_RUBBER);
         continue;
       }
 
@@ -347,11 +365,10 @@ app.post('/webhook', async (req, res) => {
         const bal = await getWorkerBalance();
         await reply(rt,
           `💳 ยอดค้างไท\n\n`
-          + (bal > 0
-            ? `❌ ไท ค้างอยู่: ฿${fmt(bal)}`
-            : bal < 0
-            ? `✅ จ่ายเกิน ฿${fmt(Math.abs(bal))} (ไท ยังมีเครดิต)`
-            : `✅ ไม่มียอดค้าง`)
+          + (bal > 0 ? `❌ ไท ค้างอยู่: ฿${fmt(bal)}`
+            : bal < 0 ? `✅ จ่ายเกิน ฿${fmt(Math.abs(bal))} (ไท ยังมีเครดิต)`
+            : `✅ ไม่มียอดค้าง`),
+          QR_RUBBER
         );
         continue;
       }
@@ -359,24 +376,23 @@ app.post('/webhook', async (req, res) => {
       // ── สวนยาง: ประวัติยาง ───────────────────────────────────────────────
       if (/^ประวัติยาง$/i.test(text)) {
         const rows = await getRecentRubber(5);
-        if (rows.length === 0) { await reply(rt, '🌿 ยังไม่มีประวัติขายยางครับ'); continue; }
+        if (rows.length === 0) { await reply(rt, '🌿 ยังไม่มีประวัติขายยางครับ', QR_RUBBER); continue; }
         const TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
         const lines = rows.map(r => {
           const d = new Date(r[0]);
-          const dateStr = `${d.getDate()} ${TH_M[d.getMonth()]} ${d.getFullYear()+543}`;
-          return `📅 ${dateStr}\n   ⚖️ ${r[2]} กก. × ฿${r[3]} = ฿${fmt(r[4])}`;
+          return `📅 ${d.getDate()} ${TH_M[d.getMonth()]} ${d.getFullYear()+543}\n   ⚖️ ${r[2]} กก. × ฿${r[3]} = ฿${fmt(r[4])}`;
         });
         const bal = await getWorkerBalance();
-        await reply(rt, `📜 ประวัติขายยางล่าสุด\n\n${lines.join('\n\n')}\n\n💳 ยอดค้างไท: ฿${fmt(bal)}`);
+        await reply(rt, `📜 ประวัติขายยางล่าสุด\n\n${lines.join('\n\n')}\n\n💳 ยอดค้างไท: ฿${fmt(bal)}`, QR_RUBBER);
         continue;
       }
 
       // ── สวนยาง: สรุปยาง ──────────────────────────────────────────────────
       if (/^สรุปยาง$/i.test(text)) {
         const [sum, bal] = await Promise.all([getRubberSummary(), getWorkerBalance()]);
+        const TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
         const recentLines = sum.recent.map(r => {
           const d = new Date(r.date);
-          const TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
           return `  • ${d.getDate()} ${TH_M[d.getMonth()]} ${d.getFullYear()+543}: ${r.net} กก. ฿${fmt(r.total)}`;
         }).join('\n');
         await reply(rt,
@@ -386,7 +402,8 @@ app.post('/webhook', async (req, res) => {
           + `💰 ยอดขายรวม ฿${fmt(sum.totalBaht)}\n`
           + `🏠 เจ้าของได้รับ ฿${fmt(sum.ownerBaht)}\n`
           + (recentLines ? `\n📅 รอบล่าสุด:\n${recentLines}\n` : '')
-          + `\n💳 ยอดค้างไท: ฿${fmt(bal)}`
+          + `\n💳 ยอดค้างไท: ฿${fmt(bal)}`,
+          QR_RUBBER
         );
         continue;
       }
@@ -489,7 +506,7 @@ app.post('/webhook', async (req, res) => {
       if (/บันทึกมิเตอร์|ใส่มิเตอร์|มิเตอร์ใหม่/i.test(text)) {
         const { wPrev, ePrev } = await getLastMeters();
         SESSION.set(userId, { step: 'water', wPrev, ePrev });
-        await reply(rt, `💧 มิเตอร์น้ำ = ? (ครั้งก่อน: ${wPrev})`);
+        await reply(rt, `💧 มิเตอร์น้ำ = ? (ครั้งก่อน: ${wPrev})`, QR_GUIDED);
         continue;
       }
 
