@@ -556,7 +556,7 @@ app.post('/webhook', async (req, res) => {
       }
 
       // ── ค่าเช่า ────────────────────────────────────────────────────────────
-      if (/ค่าเช่า|รับเงิน|จ่ายแล้ว|รับค่า|โอนแล้ว/i.test(text)) {
+      if (/ค่าเช่า|จ่ายแล้ว|รับค่า|โอนแล้ว/i.test(text) || (/รับเงิน/i.test(text) && !/หนี้|น้ำ/i.test(text))) {
         const room   = detectRoom(text);
         const amount = detectAmount(text);
         const date   = detectDate(text);
