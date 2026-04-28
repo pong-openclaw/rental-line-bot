@@ -620,7 +620,7 @@ app.post('/webhook', async (req, res) => {
       }
 
       // ── รายรับล่าสุด ──────────────────────────────────────────────────────
-      if (/รายรับ|ประวัติ|ล่าสุด/i.test(text)) {
+      if (/รายรับ|ล่าสุด/i.test(text) || (/ประวัติ/i.test(text) && !/น้ำ|ยาง|หนี้/i.test(text))) {
         const rows = await getRecentIncome(5);
         if (rows.length === 0) { await reply(rt, 'ยังไม่มีรายรับครับ'); continue; }
         const lines = rows.map(r => `  ${r[0]} · ${r[1]} · ฿${(+r[3]).toLocaleString('th-TH')}`).join('\n');
