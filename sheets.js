@@ -46,37 +46,34 @@ async function appendToSheet(range, values, spreadsheetId = SPREADSHEET_ID) {
   return res.json();
 }
 
-// ดึงมิเตอร์ครั้งล่าสุดจาก sheet
+// ── ห้องเช่า ──────────────────────────────────────────────────────────────────
+
 async function getLastMeters() {
   const rows = await getValues('น้ำไฟ_ห้อง3!A:J');
-  // หาแถวสุดท้ายที่มีข้อมูลจริง (ไม่ใช่ header หรือตัวอย่าง)
   const dataRows = rows.filter(r => r[0] && r[0] !== 'เดือน/ปี' && r[0] !== 'ตัวอย่าง');
-  if (dataRows.length === 0) return { wPrev: 597, ePrev: 4851 }; // fallback
+  if (dataRows.length === 0) return { wPrev: 597, ePrev: 4851 };
   const last = dataRows[dataRows.length - 1];
   return {
-    wPrev: parseInt(last[2]) || 597,   // มิเตอร์น้ำใหม่ของรอบก่อน
-    ePrev: parseInt(last[6]) || 4851   // มิเตอร์ไฟใหม่ของรอบก่อน
+    wPrev: parseInt(last[2]) || 597,
+    ePrev: parseInt(last[6]) || 4851
   };
 }
 
 async function appendRent(values)      { return appendToSheet('รายรับ!A:F', values); }
 async function appendWaterElec(values) { return appendToSheet('น้ำไฟ_ห้อง3!A:J', values); }
 
-// ตรวจสอบว่าบิลค่าน้ำไฟรอบนั้นๆ ถูกบันทึกการรับเงินแล้วหรือยัง
 async function isWaterBillPaid(month) {
   if (!month) return false;
   const rows = await getValues('รายรับ!A:F');
   return rows.some(r => r[2] === 'ค่าน้ำไฟ' && r[5] === month);
 }
 
-// ดึงรายรับล่าสุด N รายการ
 async function getRecentIncome(n = 5) {
   const rows = await getValues('รายรับ!A:F');
   const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
   return data.slice(-n);
 }
 
-// สรุปรายรับเดือนนี้
 async function getMonthlySummary() {
   const rows = await getValues('รายรับ!A:F');
   const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
@@ -88,7 +85,6 @@ async function getMonthlySummary() {
   return { total, byRoom, count: thisMonthRows.length };
 }
 
-// ดึงบิลค่าน้ำไฟล่าสุด (สำหรับกด "รับเงินแล้ว" ทีหลัง)
 async function getLastWaterElecBill() {
   const rows = await getValues('น้ำไฟ_ห้อง3!A:J');
   const data = rows.filter(r => r[0] && r[0] !== 'เดือน/ปี' && r[0] !== 'ตัวอย่าง');
@@ -97,26 +93,18 @@ async function getLastWaterElecBill() {
   return { month: last[0], total: parseFloat(last[9]) || 0 };
 }
 
-// ── สวนยาง (ชีต1 — 13 คอลัมน์ A-M) ──────────────────────────────────────────
-// A:วันที่ B:น้ำหนักรวม_กก C:น้ำหนักสุทธิ_กก D:ราคา_บาทต่อกก E:ยอดขายรวม_บาท
-// F:ส่วนแบ่งเจ้าของ_บาท G:ส่วนแบ่งคนตัด_บาท H:ชำระคืน_บาท
-// I:โอนให้เจ้าของ_บาท J:คนตัดรับสุทธิ_บาท K:ความชื้น_เปอร์เซ็นต์
-// L:หมายเหตุ M:เบิกใหม่_บาท
+// ── สวนยาง ────────────────────────────────────────────────────────────────────
 
 async function appendRubberSale(values) {
   return appendToSheet('ชีต1!A:M', values, RUBBER_SPREADSHEET_ID);
 }
 
-// ติดตามหนี้: A=วันที่ B=รายการ C=เบิกใหม่ D=คืนหนี้ E=ยอดคงเหลือ F=หมายเหตุ
 async function getWorkerBalance() {
   const rows = await getValues('ติดตามหนี้!A:F', RUBBER_SPREADSHEET_ID);
   const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
-  // คำนวณจากผลรวม เบิก(C) - คืน(D) ทุกแถว — ไม่อ่านแถวสุดท้ายเพราะอาจมี #ERROR!
   let balance = 0;
   for (const r of data) {
-    const adv = parseFloat(r[2]) || 0; // C: เบิกใหม่
-    const rep = parseFloat(r[3]) || 0; // D: คืนหนี้
-    balance += adv - rep;
+    balance += (parseFloat(r[2]) || 0) - (parseFloat(r[3]) || 0);
   }
   return +balance.toFixed(2);
 }
@@ -129,13 +117,12 @@ async function appendDebtRecord(date, label, advance, repay, note = '') {
 
 async function getRubberSummary() {
   const rows = await getValues('ชีต1!A:M', RUBBER_SPREADSHEET_ID);
-  const data = rows.filter(r => r[0] && r[0] !== 'วันที่' && r[1]); // เฉพาะแถวที่มีน้ำหนัก
+  const data = rows.filter(r => r[0] && r[0] !== 'วันที่' && r[1]);
   const thisYear = new Date().getFullYear().toString();
   const yearRows = data.filter(r => r[0] && r[0].startsWith(thisYear));
   const totalKgNet = yearRows.reduce((s, r) => s + (parseFloat(r[2]) || 0), 0);
   const totalBaht  = yearRows.reduce((s, r) => s + (parseFloat(r[4]) || 0), 0);
   const ownerBaht  = yearRows.reduce((s, r) => s + (parseFloat(r[5]) || 0), 0);
-  // รอบล่าสุด 3 รอบ
   const recent = data.slice(-3).reverse().map(r => ({
     date: r[0], net: parseFloat(r[2]) || 0,
     price: parseFloat(r[3]) || 0, total: parseFloat(r[4]) || 0
@@ -149,4 +136,200 @@ async function getRecentRubber(n = 5) {
   return data.slice(-n).reverse();
 }
 
-module.exports = { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, isWaterBillPaid, appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber };
+// ── หนี้ธนาคาร ธอส. ──────────────────────────────────────────────────────────
+// หนี้_รับเงิน!A:E  → วันที่ | เดือน | ชื่อ | ยอดรับ | หมายเหตุ
+// หนี้_ส่งธนาคาร!A:D → วันที่ | เดือน | ยอด  | หมายเหตุ
+
+const BANK_START   = '2026-05'; // เดือนแรกที่เริ่มบันทึก
+const BANK_MONTHLY = 3575;
+const BANK_MEMBERS = ['พี่หมา', 'พี่แมว', 'พี่อ๊อด', 'อู๊ด'];
+
+function monthsCount(start, end) {
+  const [sy, sm] = start.split('-').map(Number);
+  const [ey, em] = end.split('-').map(Number);
+  return Math.max(0, (ey - sy) * 12 + (em - sm) + 1);
+}
+
+async function appendBankPayment(name, amount, note = '') {
+  const date  = new Date().toISOString().slice(0, 10);
+  const month = date.slice(0, 7);
+  return appendToSheet('หนี้_รับเงิน!A:E', [date, month, name, amount, note]);
+}
+
+async function appendBankSent(amount, note = '') {
+  const date  = new Date().toISOString().slice(0, 10);
+  const month = date.slice(0, 7);
+  return appendToSheet('หนี้_ส่งธนาคาร!A:D', [date, month, amount, note]);
+}
+
+async function getBankStatus() {
+  const [payRows, sentRows] = await Promise.all([
+    getValues('หนี้_รับเงิน!A:E'),
+    getValues('หนี้_ส่งธนาคาร!A:D')
+  ]);
+  const payments = payRows.filter(r => r[0] && r[0] !== 'วันที่');
+  const sentData = sentRows.filter(r => r[0] && r[0] !== 'วันที่');
+
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const elapsed      = monthsCount(BANK_START, currentMonth);
+  const totalOwed    = elapsed * BANK_MONTHLY;
+
+  const members = {};
+  for (const name of BANK_MEMBERS) {
+    const allPaid  = payments.filter(r => r[2] === name).reduce((s, r) => s + (parseFloat(r[3]) || 0), 0);
+    const thisPaid = payments.filter(r => r[2] === name && r[1] === currentMonth).reduce((s, r) => s + (parseFloat(r[3]) || 0), 0);
+    const balance  = +(totalOwed - allPaid).toFixed(2);
+    members[name]  = { allPaid, thisPaid, balance };
+  }
+
+  const sentThisMonth  = sentData.filter(r => r[1] === currentMonth);
+  const bankSent       = sentThisMonth.length > 0;
+  const bankSentAmount = sentThisMonth.reduce((s, r) => s + (parseFloat(r[2]) || 0), 0);
+  const totalCollected = Object.values(members).reduce((s, m) => s + m.thisPaid, 0);
+
+  return { members, bankSent, bankSentAmount, totalCollected, currentMonth };
+}
+
+async function getBankHistory(n = 3) {
+  const rows = await getValues('หนี้_รับเงิน!A:E');
+  const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
+  const byMonth = {};
+  for (const r of data) {
+    if (!byMonth[r[1]]) byMonth[r[1]] = {};
+    byMonth[r[1]][r[2]] = (byMonth[r[1]][r[2]] || 0) + (parseFloat(r[3]) || 0);
+  }
+  const months = Object.keys(byMonth).sort().reverse().slice(0, n);
+  return months.map(m => ({ month: m, payments: byMonth[m] }));
+}
+
+async function getBankOverdue() {
+  const status = await getBankStatus();
+  const overdues = [];
+  for (const [name, info] of Object.entries(status.members)) {
+    if (info.balance > 0) overdues.push(`  ${name}: ค้าง ฿${info.balance.toLocaleString('th-TH')}`);
+  }
+  if (!status.bankSent) overdues.push('  ⚠️ ยังไม่ได้ส่งธนาคาร');
+  return overdues;
+}
+
+// ── ค่าน้ำพ่วง ────────────────────────────────────────────────────────────────
+// น้ำ_พ่วง!A:I     → เดือน | ผู้เช่า | มิเตอร์เก่า | มิเตอร์ใหม่ | หน่วย | ราคา/หน่วย | ยอด | วันออกบิล | วันครบกำหนด
+// น้ำ_รับเงิน!A:E  → วันที่ | ผู้เช่า | เดือน | ยอด | หมายเหตุ
+// น้ำ_บิลหลัก!A:F  → วันที่ | เดือน | หน่วยรวม | ยอดรวม | สถานะ | วันจ่ายหมี่
+
+const WATER_TENANTS = ['อารี', 'ไข่ดำ'];
+
+async function getLastWaterSubMeter(tenant) {
+  const rows = await getValues('น้ำ_พ่วง!A:I');
+  const data = rows.filter(r => r[0] && r[0] !== 'เดือน' && r[1] === tenant);
+  if (data.length === 0) return 0;
+  return parseInt(data[data.length - 1][3]) || 0; // col D: มิเตอร์ใหม่
+}
+
+async function appendWaterBill(month, tenant, meterOld, meterNew, ratePerUnit, billDate, dueDate) {
+  const units  = meterNew - meterOld;
+  const amount = +(units * ratePerUnit).toFixed(2);
+  return appendToSheet('น้ำ_พ่วง!A:I', [month, tenant, meterOld, meterNew, units, +ratePerUnit.toFixed(4), amount, billDate, dueDate]);
+}
+
+async function appendWaterMainBill(month, totalUnits, totalAmount) {
+  const date        = new Date().toISOString().slice(0, 10);
+  const ratePerUnit = +(totalAmount / totalUnits).toFixed(4);
+  await appendToSheet('น้ำ_บิลหลัก!A:F', [date, month, totalUnits, totalAmount, 'ยังไม่จ่าย', '']);
+  return ratePerUnit;
+}
+
+async function appendWaterPayment(tenant, month, amount) {
+  const date = new Date().toISOString().slice(0, 10);
+  return appendToSheet('น้ำ_รับเงิน!A:E', [date, tenant, month, amount, '']);
+}
+
+async function appendWaterMainPaid(amount) {
+  const date  = new Date().toISOString().slice(0, 10);
+  const month = date.slice(0, 7);
+  return appendToSheet('น้ำ_บิลหลัก!A:F', [date, month + '_paid', 0, amount, 'จ่ายแล้ว', date]);
+}
+
+async function getWaterStatus() {
+  const [billRows, payRows, mainRows] = await Promise.all([
+    getValues('น้ำ_พ่วง!A:I'),
+    getValues('น้ำ_รับเงิน!A:E'),
+    getValues('น้ำ_บิลหลัก!A:F')
+  ]);
+  const bills    = billRows.filter(r => r[0] && r[0] !== 'เดือน');
+  const payments = payRows.filter(r => r[0] && r[0] !== 'วันที่');
+  const mains    = mainRows.filter(r => r[0] && r[0] !== 'วันที่' && !String(r[1]).includes('_paid'));
+
+  const tenants = {};
+  for (const tenant of WATER_TENANTS) {
+    const billed   = bills.filter(r => r[1] === tenant).reduce((s, r) => s + (parseFloat(r[6]) || 0), 0);
+    const paid     = payments.filter(r => r[1] === tenant).reduce((s, r) => s + (parseFloat(r[3]) || 0), 0);
+    const balance  = +(billed - paid).toFixed(2);
+    const lastBill = bills.filter(r => r[1] === tenant).slice(-1)[0] || null;
+    tenants[tenant] = { billed, paid, balance, lastBill };
+  }
+
+  // สถานะบิลหลัก (จ่ายหมี่แล้วไหม)
+  const lastMain   = mains.slice(-1)[0] || null;
+  const paidRows   = mainRows.filter(r => r[4] === 'จ่ายแล้ว');
+  const mainPaid   = lastMain ? paidRows.some(r => String(r[1]).startsWith(lastMain[1])) : false;
+
+  return {
+    tenants,
+    lastMain: lastMain ? {
+      month:       lastMain[1],
+      totalUnits:  parseFloat(lastMain[2]) || 0,
+      totalAmount: parseFloat(lastMain[3]) || 0,
+      rate:        +((parseFloat(lastMain[3]) || 0) / Math.max(parseFloat(lastMain[2]) || 1, 1)).toFixed(4),
+      paid:        mainPaid
+    } : null
+  };
+}
+
+async function getWaterHistory(tenant, n = 3) {
+  const [billRows, payRows] = await Promise.all([
+    getValues('น้ำ_พ่วง!A:I'),
+    getValues('น้ำ_รับเงิน!A:E')
+  ]);
+  const bills    = billRows.filter(r => r[0] && r[0] !== 'เดือน' && r[1] === tenant);
+  const payments = payRows.filter(r => r[0] && r[0] !== 'วันที่' && r[1] === tenant);
+  return bills.slice(-n).reverse().map(b => ({
+    month:   b[0],
+    meterOld: parseInt(b[2]) || 0,
+    meterNew: parseInt(b[3]) || 0,
+    units:    parseInt(b[4]) || 0,
+    rate:     parseFloat(b[5]) || 0,
+    amount:   parseFloat(b[6]) || 0,
+    billDate: b[7],
+    dueDate:  b[8],
+    paid:     payments.some(p => p[2] === b[0])
+  }));
+}
+
+async function getWaterOverdue() {
+  const status = await getWaterStatus();
+  const overdues = [];
+  for (const [tenant, info] of Object.entries(status.tenants)) {
+    if (info.balance > 0) overdues.push(`  ${tenant}: ค้าง ฿${info.balance.toLocaleString('th-TH')}`);
+  }
+  if (status.lastMain && !status.lastMain.paid) {
+    const owedHere = Object.values(status.tenants).reduce((s, t) => s + t.balance, 0);
+    if (owedHere > 0) overdues.push('  ⚠️ ยังไม่ได้จ่ายหมี่');
+  }
+  return overdues;
+}
+
+module.exports = {
+  // ห้องเช่า
+  appendRent, appendWaterElec, getLastMeters, getRecentIncome,
+  getMonthlySummary, getLastWaterElecBill, isWaterBillPaid,
+  // สวนยาง
+  appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber,
+  // หนี้ธนาคาร
+  BANK_MEMBERS, BANK_MONTHLY,
+  appendBankPayment, appendBankSent, getBankStatus, getBankHistory, getBankOverdue,
+  // ค่าน้ำพ่วง
+  WATER_TENANTS,
+  getLastWaterSubMeter, appendWaterBill, appendWaterMainBill,
+  appendWaterPayment, appendWaterMainPaid, getWaterStatus, getWaterHistory, getWaterOverdue,
+};

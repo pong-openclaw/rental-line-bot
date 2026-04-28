@@ -1,6 +1,15 @@
 const express = require('express');
 const crypto  = require('crypto');
-const { appendRent, appendWaterElec, getLastMeters, getRecentIncome, getMonthlySummary, getLastWaterElecBill, isWaterBillPaid, appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber } = require('./sheets');
+const {
+  appendRent, appendWaterElec, getLastMeters, getRecentIncome,
+  getMonthlySummary, getLastWaterElecBill, isWaterBillPaid,
+  appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber,
+  BANK_MEMBERS, BANK_MONTHLY,
+  appendBankPayment, appendBankSent, getBankStatus, getBankHistory, getBankOverdue,
+  WATER_TENANTS,
+  getLastWaterSubMeter, appendWaterBill, appendWaterMainBill,
+  appendWaterPayment, appendWaterMainPaid, getWaterStatus, getWaterHistory, getWaterOverdue,
+} = require('./sheets');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -45,6 +54,32 @@ const QR_RUBBER = { items: [
 const QR_GUIDED = { items: [
   { type:'action', action:{ type:'message', label:'❌ ยกเลิก', text:'ยกเลิก' } },
 ]};
+const QR_BANK = { items: [
+  { type:'action', action:{ type:'message', label:'💵 รับเงิน',     text:'รับเงินหนี้บ้าน' } },
+  { type:'action', action:{ type:'message', label:'⏰ ยอดค้าง',     text:'ยอดค้างบ้าน' } },
+  { type:'action', action:{ type:'message', label:'🏦 ส่งธนาคาร',   text:'ส่งธนาคารแล้ว' } },
+  { type:'action', action:{ type:'message', label:'📜 ประวัติ',     text:'ประวัติหนี้บ้าน' } },
+]};
+const QR_WATER = { items: [
+  { type:'action', action:{ type:'message', label:'🔢 บันทึกมิเตอร์', text:'บันทึกน้ำพ่วง' } },
+  { type:'action', action:{ type:'message', label:'⏰ ยอดค้าง',       text:'ยอดค้างน้ำ' } },
+  { type:'action', action:{ type:'message', label:'💧 จ่ายหมี่แล้ว',  text:'จ่ายหมี่แล้ว' } },
+  { type:'action', action:{ type:'message', label:'📜 ประวัติอารี',   text:'ประวัติน้ำอารี' } },
+  { type:'action', action:{ type:'message', label:'📜 ประวัติไข่ดำ',  text:'ประวัติน้ำไข่ดำ' } },
+]};
+
+// เก็บ userId เจ้าของเพื่อส่ง push notification
+let OWNER_ID = process.env.LINE_OWNER_ID || null;
+
+async function push(userId, text, qr = null) {
+  const message = { type: 'text', text };
+  if (qr) message.quickReply = qr;
+  await fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to: userId, messages: [message] })
+  });
+}
 
 async function reply(replyToken, text, qr = QR_RENTAL) {
   const message = { type: 'text', text, quickReply: qr };
@@ -134,8 +169,10 @@ app.post('/webhook', async (req, res) => {
     const text   = ev.message.text.trim();
     const rt     = ev.replyToken;
     const userId = ev.source?.userId || 'unknown';
-    // คำสั่งหลัก — ล้าง session ทิ้งก่อนเสมอ ไม่สนว่ากำลังทำขั้นตอนอะไรอยู่
-    const MAIN_CMDS = /^(ห้องเช่า|สวนยาง|ภาพรวม|ค่าเช่า|เช่า|รับเงิน|ค่าน้ำไฟ|ประวัติรายรับ|สรุป|รายรับ|มิเตอร์|ยอดค้าง|ยอดค้างไท|ประวัติยาง|สรุปยาง|ขายยาง|เบิกเงิน|คืนเงิน|บันทึกมิเตอร์|รับเงินแล้ว|help|ช่วย|วิธีใช้|menu|เมนู)$/i;
+    // เก็บ userId เจ้าของ
+    if (!OWNER_ID) OWNER_ID = userId;
+    // คำสั่งหลัก — ล้าง session ทิ้งก่อนเสมอ
+    const MAIN_CMDS = /^(ห้องเช่า|สวนยาง|ภาพรวม|ค่าเช่า|เช่า|รับเงิน|ค่าน้ำไฟ|ประวัติรายรับ|สรุป|รายรับ|มิเตอร์|ยอดค้าง|ยอดค้างไท|ประวัติยาง|สรุปยาง|ขายยาง|เบิกเงิน|คืนเงิน|บันทึกมิเตอร์|รับเงินแล้ว|หนี้บ้าน|รับเงินหนี้บ้าน|ยอดค้างบ้าน|ส่งธนาคารแล้ว|ประวัติหนี้บ้าน|น้ำพ่วง|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ|สรุปทั้งหมด|help|ช่วย|วิธีใช้|menu|เมนู)$/i;
     if (MAIN_CMDS.test(text)) SESSION.delete(userId);
     let sess = SESSION.get(userId);
 
@@ -598,6 +635,311 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
+      // ══════════════════════════════════════════════════════════════════════
+      // ── หนี้ธนาคาร ธอส. ────────────────────────────────────────────────
+      // ══════════════════════════════════════════════════════════════════════
+
+      if (/^หนี้บ้าน$/i.test(text)) {
+        const status = await getBankStatus();
+        const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+        const now = new Date();
+        const monthName = THAI_MONTHS[now.getMonth() + 1];
+        const lines = BANK_MEMBERS.map(name => {
+          const m = status.members[name];
+          const thisMon = m.thisPaid;
+          if (thisMon >= BANK_MONTHLY) return `✅ ${name} — ฿${fmt(thisMon)} ครบแล้ว`;
+          if (thisMon > 0)             return `⚠️ ${name} — ฿${fmt(thisMon)} / ${fmt(BANK_MONTHLY)} (ค้าง ฿${fmt(BANK_MONTHLY - thisMon)})`;
+          return `❌ ${name} — ยังไม่จ่าย (ค้าง ฿${fmt(m.balance)})`;
+        });
+        const totalUnpaid = Object.values(status.members).filter(m => m.balance > 0).reduce((s, m) => s + m.balance, 0);
+        await reply(rt,
+          `🏦 หนี้ธนาคาร ธอส. — ${monthName}\n\n`
+          + lines.join('\n')
+          + `\n\n💰 รวมได้เดือนนี้: ฿${fmt(status.totalCollected)} / ฿${fmt(BANK_MONTHLY * 4)}`
+          + (status.bankSent ? `\n✅ ส่งธนาคารแล้ว ฿${fmt(status.bankSentAmount)}` : '\n⏳ ยังไม่ได้ส่งธนาคาร')
+          + (totalUnpaid > 0 ? `\n\n💳 ยอดค้างสะสมทั้งหมด: ฿${fmt(totalUnpaid)}` : ''),
+          QR_BANK
+        );
+        continue;
+      }
+
+      // รับเงินจากสมาชิก: "รับเงินพี่หมา 3575"
+      {
+        const mBank = text.match(/^รับเงิน(พี่หมา|พี่แมว|พี่อ๊อด|อู๊ด)\s+(\d[\d,]*)/i);
+        if (mBank) {
+          const name   = mBank[1];
+          const amount = parseInt(mBank[2].replace(/,/g, ''));
+          await appendBankPayment(name, amount);
+          const status = await getBankStatus();
+          const m = status.members[name];
+          const balance = m.balance;
+          await reply(rt,
+            `✅ รับเงิน${name} ฿${fmt(amount)} แล้วครับ\n`
+            + (balance <= 0 ? `🎉 ${name} ไม่มียอดค้างแล้ว` : `💳 ${name} ยังค้างอยู่: ฿${fmt(balance)}`),
+            QR_BANK
+          );
+          continue;
+        }
+      }
+
+      if (/^รับเงินหนี้บ้าน$/i.test(text)) {
+        const qr = { items: BANK_MEMBERS.map(n => ({
+          type:'action', action:{ type:'message', label:n, text:`รับเงิน${n} ${BANK_MONTHLY}` }
+        })).concat([{ type:'action', action:{ type:'message', label:'↩️ กลับ', text:'หนี้บ้าน' } }]) };
+        await fetch('https://api.line.me/v2/bot/message/reply', {
+          method:'POST', headers:{ Authorization:`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({ replyToken: rt, messages: [{ type:'text', text:'💵 เลือกคนที่รับเงินครับ', quickReply: qr }] })
+        });
+        continue;
+      }
+
+      if (/^ยอดค้างบ้าน$/i.test(text)) {
+        const status = await getBankStatus();
+        const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+        const monthName = THAI_MONTHS[new Date().getMonth() + 1];
+        const lines = BANK_MEMBERS.map(name => {
+          const b = status.members[name].balance;
+          return b <= 0 ? `✅ ${name} — ไม่มียอดค้าง` : `❌ ${name} — ค้าง ฿${fmt(b)}`;
+        });
+        await reply(rt,
+          `⏰ ยอดค้างหนี้บ้าน — ${monthName}\n\n` + lines.join('\n')
+          + (status.bankSent ? `\n\n✅ ส่งธนาคารแล้ว` : `\n\n⏳ ยังไม่ส่งธนาคาร`),
+          QR_BANK
+        );
+        continue;
+      }
+
+      if (/^ส่งธนาคารแล้ว$/i.test(text)) {
+        const status = await getBankStatus();
+        if (status.bankSent) {
+          await reply(rt, `✅ บันทึกส่งธนาคารเดือนนี้แล้วครับ (฿${fmt(status.bankSentAmount)})`, QR_BANK);
+          continue;
+        }
+        SESSION.set(userId, { step: 'bank_sent_amount' });
+        await reply(rt, `🏦 ส่งธนาคารเท่าไหร่ครับ? (ปกติ ฿${fmt(BANK_MONTHLY * 4)})`, QR_GUIDED);
+        continue;
+      }
+      if (sess?.step === 'bank_sent_amount') {
+        const amt = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ', QR_GUIDED); continue; }
+        SESSION.delete(userId);
+        await appendBankSent(amt);
+        await reply(rt, `✅ บันทึกส่งธนาคาร ฿${fmt(amt)} แล้วครับ`, QR_BANK);
+        continue;
+      }
+
+      if (/^ประวัติหนี้บ้าน$/i.test(text)) {
+        const history = await getBankHistory(3);
+        if (history.length === 0) { await reply(rt, '📜 ยังไม่มีประวัติครับ', QR_BANK); continue; }
+        const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+        const lines = history.map(h => {
+          const [y, m] = h.month.split('-');
+          const mName = THAI_MONTHS[parseInt(m)];
+          const entries = BANK_MEMBERS.map(name => {
+            const p = h.payments[name] || 0;
+            return p > 0 ? `  ${name}: ฿${fmt(p)}` : `  ${name}: ❌`;
+          }).join('\n');
+          return `📅 ${mName} ${parseInt(y)+543}\n${entries}`;
+        });
+        await reply(rt, `📜 ประวัติหนี้บ้าน\n\n` + lines.join('\n\n'), QR_BANK);
+        continue;
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      // ── ค่าน้ำพ่วง ─────────────────────────────────────────────────────
+      // ══════════════════════════════════════════════════════════════════════
+
+      if (/^น้ำพ่วง$/i.test(text)) {
+        const wStatus = await getWaterStatus();
+        const lines = WATER_TENANTS.map(t => {
+          const b = wStatus.tenants[t]?.balance || 0;
+          return b <= 0 ? `✅ ${t} — ไม่มียอดค้าง` : `❌ ${t} — ค้าง ฿${fmt(b)}`;
+        });
+        const mainInfo = wStatus.lastMain
+          ? (wStatus.lastMain.paid ? `✅ จ่ายหมี่แล้ว` : `⏳ ยังไม่จ่ายหมี่ (฿${fmt(wStatus.lastMain.totalAmount)})`)
+          : `📋 ยังไม่มีบิล`;
+        await reply(rt,
+          `💧 ค่าน้ำพ่วง\n\n` + lines.join('\n') + `\n\n${mainInfo}`,
+          QR_WATER
+        );
+        continue;
+      }
+
+      // บันทึกน้ำพ่วง — guided flow 4 ขั้น
+      if (/^บันทึกน้ำพ่วง$/i.test(text)) {
+        SESSION.set(userId, { step: 'water_main_amount' });
+        await reply(rt, `💧 บันทึกมิเตอร์น้ำพ่วง\n\nขั้นที่ 1/4\n💰 ยอดรวมบิลประปา (฿)?\nเช่น 492.20`, QR_GUIDED);
+        continue;
+      }
+      if (sess?.step === 'water_main_amount') {
+        const amt = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 492.20', QR_GUIDED); continue; }
+        SESSION.set(userId, { ...sess, step: 'water_main_units', mainAmount: amt });
+        await reply(rt, `✅ ยอดบิล ฿${fmt(amt)}\n\nขั้นที่ 2/4\n🔢 หน่วยรวมในบิล?\nเช่น 24`, QR_GUIDED);
+        continue;
+      }
+      if (sess?.step === 'water_main_units') {
+        const units = parseInt(text.replace(/,/g, ''));
+        if (isNaN(units) || units <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 24', QR_GUIDED); continue; }
+        const rate = +(sess.mainAmount / units).toFixed(4);
+        const prevAree    = await getLastWaterSubMeter('อารี');
+        const prevKaidam  = await getLastWaterSubMeter('ไข่ดำ');
+        SESSION.set(userId, { ...sess, step: 'water_aree_meter', mainUnits: units, rate, prevAree, prevKaidam });
+        await reply(rt, `✅ ${units} หน่วย → ฿${fmt(rate)}/หน่วย\n\nขั้นที่ 3/4\n💧 มิเตอร์อารีครั้งนี้?\n(ครั้งก่อน: ${prevAree})`, QR_GUIDED);
+        continue;
+      }
+      if (sess?.step === 'water_aree_meter') {
+        const m = parseInt(text.replace(/,/g, ''));
+        if (isNaN(m) || m < (sess.prevAree || 0)) { await reply(rt, `❌ ใส่ตัวเลขครับ (ต้องมากกว่า ${sess.prevAree})`, QR_GUIDED); continue; }
+        SESSION.set(userId, { ...sess, step: 'water_kaidam_meter', areeMeter: m });
+        await reply(rt, `✅ อารี: ${sess.prevAree} → ${m} (${m - sess.prevAree} หน่วย)\n\nขั้นที่ 4/4\n💧 มิเตอร์ไข่ดำครั้งนี้?\n(ครั้งก่อน: ${sess.prevKaidam})`, QR_GUIDED);
+        continue;
+      }
+      if (sess?.step === 'water_kaidam_meter') {
+        const m = parseInt(text.replace(/,/g, ''));
+        if (isNaN(m) || m < (sess.prevKaidam || 0)) { await reply(rt, `❌ ใส่ตัวเลขครับ (ต้องมากกว่า ${sess.prevKaidam})`, QR_GUIDED); continue; }
+        SESSION.delete(userId);
+
+        const { mainAmount, mainUnits, rate, prevAree, areeMeter, prevKaidam } = sess;
+        const areeUnits   = areeMeter - prevAree;
+        const kaidamUnits = m - prevKaidam;
+        const areeAmt     = +(areeUnits * rate).toFixed(2);
+        const kaidamAmt   = +(kaidamUnits * rate).toFixed(2);
+        const totalPay    = +(areeAmt + kaidamAmt).toFixed(2);
+
+        const today    = new Date().toISOString().slice(0, 10);
+        const dueDate  = new Date(today);
+        dueDate.setDate(dueDate.getDate() + 7);
+        const dueDateStr = dueDate.toISOString().slice(0, 10);
+        const month    = today.slice(0, 7);
+
+        // บันทึกลง Sheets
+        await Promise.all([
+          appendWaterMainBill(month, mainUnits, mainAmount),
+          appendWaterBill(month, 'อารี',  prevAree,    areeMeter, rate, today, dueDateStr),
+          appendWaterBill(month, 'ไข่ดำ', prevKaidam,  m,         rate, today, dueDateStr),
+        ]);
+
+        // สร้างบิล 3 ชุด
+        const THAI_MONTHS_FULL = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+        const [my, mm] = month.split('-');
+        const monthThai = THAI_MONTHS_FULL[parseInt(mm)] + ' ' + (parseInt(my) + 543);
+        const dueD = new Date(dueDateStr);
+        const dueThai = `${dueD.getDate()} ${THAI_MONTHS_FULL[dueD.getMonth()+1]} ${dueD.getFullYear()+543}`;
+
+        const billAree = `━━━━━━━━━━━━━━━━━━━━\n💧 ใบแจ้งค่าน้ำประปา\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nผู้เช่า: อารี\n\n📊 การใช้น้ำ\nมิเตอร์ครั้งก่อน : ${prevAree}\nมิเตอร์ครั้งนี้  : ${areeMeter}\nหน่วยที่ใช้      : ${areeUnits} หน่วย\nราคาต่อหน่วย     : ฿${fmt(rate)}\n\n💰 ยอดชำระ: ฿${fmt(areeAmt)}\n\n📅 ชำระภายใน: ${dueThai}\n📍 ชำระที่: หมี่ (ห้องด้านหน้า)\n━━━━━━━━━━━━━━━━━━━━`;
+
+        const billKaidam = `━━━━━━━━━━━━━━━━━━━━\n💧 ใบแจ้งค่าน้ำประปา\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nผู้เช่า: ไข่ดำ\n\n📊 การใช้น้ำ\nมิเตอร์ครั้งก่อน : ${prevKaidam}\nมิเตอร์ครั้งนี้  : ${m}\nหน่วยที่ใช้      : ${kaidamUnits} หน่วย\nราคาต่อหน่วย     : ฿${fmt(rate)}\n\n💰 ยอดชำระ: ฿${fmt(kaidamAmt)}\n\n📅 ชำระภายใน: ${dueThai}\n📍 ชำระที่: หมี่ (ห้องด้านหน้า)\n━━━━━━━━━━━━━━━━━━━━`;
+
+        const billMee = `━━━━━━━━━━━━━━━━━━━━\n💧 สรุปค่าน้ำพ่วง\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nราคาต่อหน่วย: ฿${fmt(rate)}\n\nอารี  : ${areeUnits} หน่วย = ฿${fmt(areeAmt)}\nไข่ดำ : ${kaidamUnits} หน่วย = ฿${fmt(kaidamAmt)}\n\n💰 รวมที่จะได้รับ: ฿${fmt(totalPay)}\n📅 ภายใน: ${dueThai}\n━━━━━━━━━━━━━━━━━━━━`;
+
+        await reply(rt,
+          `✅ บันทึกแล้ว คัดลอกบิลส่งได้เลยครับ\n\n`
+          + `📋 บิลอารี (ส่ง Messenger):\n${billAree}\n\n`
+          + `📋 บิลไข่ดำ (ส่ง Messenger):\n${billKaidam}\n\n`
+          + `📋 สรุปหมี่ (ส่ง LINE):\n${billMee}`,
+          QR_WATER
+        );
+        continue;
+      }
+
+      // รับเงินน้ำ: "รับเงินน้ำอารี 164"
+      {
+        const mWater = text.match(/^รับเงินน้ำ(อารี|ไข่ดำ)\s+(\d[\d,]*)/i);
+        if (mWater) {
+          const tenant = mWater[1];
+          const amount = parseInt(mWater[2].replace(/,/g, ''));
+          const month  = new Date().toISOString().slice(0, 7);
+          await appendWaterPayment(tenant, month, amount);
+          const wStatus = await getWaterStatus();
+          const balance = wStatus.tenants[tenant]?.balance || 0;
+          await reply(rt,
+            `✅ รับเงินน้ำ${tenant} ฿${fmt(amount)} แล้วครับ\n`
+            + (balance <= 0 ? `🎉 ${tenant} ไม่มียอดค้างแล้ว` : `💳 ${tenant} ยังค้างอยู่: ฿${fmt(balance)}`),
+            QR_WATER
+          );
+          continue;
+        }
+      }
+
+      if (/^จ่ายหมี่แล้ว$/i.test(text)) {
+        const wStatus = await getWaterStatus();
+        if (wStatus.lastMain?.paid) {
+          await reply(rt, `✅ บันทึกจ่ายหมี่แล้วครับ`, QR_WATER); continue;
+        }
+        SESSION.set(userId, { step: 'water_main_paid' });
+        const owing = wStatus.lastMain?.totalAmount || 0;
+        await reply(rt, `💧 จ่ายหมี่เท่าไหร่ครับ?${owing > 0 ? ` (บิลล่าสุด ฿${fmt(owing)})` : ''}`, QR_GUIDED);
+        continue;
+      }
+      if (sess?.step === 'water_main_paid') {
+        const amt = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ', QR_GUIDED); continue; }
+        SESSION.delete(userId);
+        await appendWaterMainPaid(amt);
+        await reply(rt, `✅ บันทึกจ่ายหมี่ ฿${fmt(amt)} แล้วครับ`, QR_WATER);
+        continue;
+      }
+
+      if (/^ยอดค้างน้ำ$/i.test(text)) {
+        const wStatus = await getWaterStatus();
+        const lines = WATER_TENANTS.map(t => {
+          const b = wStatus.tenants[t]?.balance || 0;
+          return b <= 0 ? `✅ ${t} — ไม่มียอดค้าง` : `❌ ${t} — ค้าง ฿${fmt(b)}`;
+        });
+        const mainLine = wStatus.lastMain
+          ? (wStatus.lastMain.paid ? `✅ จ่ายหมี่แล้ว` : `❌ ยังไม่จ่ายหมี่ (฿${fmt(wStatus.lastMain.totalAmount)})`)
+          : '';
+        await reply(rt,
+          `💧 ยอดค้างค่าน้ำพ่วง\n\n` + lines.join('\n') + (mainLine ? '\n' + mainLine : ''),
+          QR_WATER
+        );
+        continue;
+      }
+
+      if (/^ประวัติน้ำ(อารี|ไข่ดำ)$/i.test(text)) {
+        const tenant  = text.match(/^ประวัติน้ำ(อารี|ไข่ดำ)$/i)[1];
+        const history = await getWaterHistory(tenant, 3);
+        if (history.length === 0) { await reply(rt, `📜 ยังไม่มีประวัติค่าน้ำ${tenant}ครับ`, QR_WATER); continue; }
+        const lines = history.map(h =>
+          `📅 ${h.month}\n  มิเตอร์: ${h.meterOld}→${h.meterNew} (${h.units} หน่วย)\n  ฿${fmt(h.amount)} ${h.paid ? '✅ จ่ายแล้ว' : '❌ ค้าง'}`
+        );
+        await reply(rt, `📜 ประวัติค่าน้ำ${tenant}\n\n` + lines.join('\n\n'), QR_WATER);
+        continue;
+      }
+
+      // ── สรุปทั้งหมด ────────────────────────────────────────────────────────
+      if (/^สรุปทั้งหมด$/i.test(text)) {
+        const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+        const monthName = THAI_MONTHS[new Date().getMonth() + 1];
+        const [rentSum, bankStatus, wStatus, rubBal] = await Promise.all([
+          getMonthlySummary(), getBankStatus(), getWaterStatus(), getWorkerBalance()
+        ]);
+        const expected = { 'ห้อง 1': 3500, 'ห้อง 2': 1000, 'ห้อง 3': 8000, 'คอนโด': 10000 };
+        const rentLines = Object.entries(expected).map(([r, a]) =>
+          (rentSum.byRoom[r] || 0) >= a ? `  ✅ ${r}` : `  ❌ ${r} ค้าง ฿${fmt(a - (rentSum.byRoom[r] || 0))}`
+        ).join('\n');
+        const bankLines = BANK_MEMBERS.map(n => {
+          const b = bankStatus.members[n].balance;
+          return b <= 0 ? `  ✅ ${n}` : `  ❌ ${n} ค้าง ฿${fmt(b)}`;
+        }).join('\n');
+        const waterLines = WATER_TENANTS.map(t => {
+          const b = wStatus.tenants[t]?.balance || 0;
+          return b <= 0 ? `  ✅ ${t}` : `  ❌ ${t} ค้าง ฿${fmt(b)}`;
+        }).join('\n');
+        await reply(rt,
+          `📊 สรุปทั้งหมด — ${monthName}\n`
+          + `━━━━━━━━━━━━━━━━━━━━\n`
+          + `🏠 ห้องเช่า\n${rentLines}\n`
+          + `\n🏦 หนี้บ้าน ธอส.\n${bankLines}\n`
+          + (bankStatus.bankSent ? `  ✅ ส่งธนาคารแล้ว` : `  ⏳ ยังไม่ส่งธนาคาร`)
+          + `\n\n💧 ค่าน้ำพ่วง\n${waterLines}\n`
+          + (wStatus.lastMain?.paid ? `  ✅ จ่ายหมี่แล้ว` : `  ⏳ ยังไม่จ่ายหมี่`)
+          + `\n\n🌿 สวนยาง\n  💳 ยอดค้างไท: ฿${fmt(rubBal)}`
+        );
+        continue;
+      }
+
       // ── Fallback ───────────────────────────────────────────────────────────
       await reply(rt,
         `ไม่เข้าใจครับ 😅 พิมพ์ "help" เพื่อดูวิธีใช้`
@@ -625,17 +967,20 @@ app.get('/setup-richmenu', async (req, res) => {
       await fetch(`https://api.line.me/v2/bot/richmenu/${m.richMenuId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${TOKEN}` } });
     }
 
-    // สร้าง Rich Menu
+    // สร้าง Rich Menu 2×3
     const menuRes = await fetch('https://api.line.me/v2/bot/richmenu', {
       method: 'POST',
       headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        size: { width: 2500, height: 843 }, selected: true,
-        name: 'Main Menu', chatBarText: '📋 เมนู',
+        size: { width: 2500, height: 1686 }, selected: true,
+        name: 'Main Menu 2x3', chatBarText: '📋 เมนู',
         areas: [
-          { bounds: { x: 0,    y: 0, width: 833,  height: 843 }, action: { type: 'message', text: 'ห้องเช่า' } },
-          { bounds: { x: 833,  y: 0, width: 834,  height: 843 }, action: { type: 'message', text: 'สวนยาง'  } },
-          { bounds: { x: 1667, y: 0, width: 833,  height: 843 }, action: { type: 'message', text: 'ภาพรวม'  } },
+          { bounds: { x: 0,    y: 0,   width: 833,  height: 843 }, action: { type: 'message', text: 'ห้องเช่า' } },
+          { bounds: { x: 833,  y: 0,   width: 834,  height: 843 }, action: { type: 'message', text: 'สวนยาง'  } },
+          { bounds: { x: 1667, y: 0,   width: 833,  height: 843 }, action: { type: 'message', text: 'ภาพรวม'  } },
+          { bounds: { x: 0,    y: 843, width: 833,  height: 843 }, action: { type: 'message', text: 'หนี้บ้าน' } },
+          { bounds: { x: 833,  y: 843, width: 834,  height: 843 }, action: { type: 'message', text: 'น้ำพ่วง'  } },
+          { bounds: { x: 1667, y: 843, width: 833,  height: 843 }, action: { type: 'message', text: 'สรุปทั้งหมด' } },
         ]
       })
     }).then(r => r.json());
@@ -693,4 +1038,69 @@ app.get('/env-check', (req, res) => res.json({
   TOKEN_set: !!TOKEN,
   TOKEN_len: TOKEN ? TOKEN.length : 0,
 }));
+// ── Cron: แจ้งเตือนค้างชำระ ────────────────────────────────────────────────────
+// Render.com ใช้ UTC — ไทย = UTC+7 → 09:00 ไทย = 02:00 UTC
+const cron = require('node-cron');
+
+// วันที่ 6 เวลา 09:00 ไทย — แจ้งเตือนหนี้บ้าน ธอส.
+cron.schedule('0 2 6 * *', async () => {
+  if (!OWNER_ID) return;
+  try {
+    const status = await getBankStatus();
+    const overdue = await getBankOverdue();
+    if (overdue.length === 0) return; // ไม่มีค้าง ไม่ต้องแจ้ง
+    const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+    const monthName = THAI_MONTHS[new Date().getMonth() + 1];
+    const lines = overdue.map(o => `❌ ${o.name} — ค้าง ฿${fmt(o.balance)}`).join('\n');
+    await push(OWNER_ID,
+      `⚠️ แจ้งเตือนหนี้บ้าน ธอส. — ${monthName}\n\n${lines}\n\nกรุณาติดตามการชำระเงินครับ`,
+      QR_BANK
+    );
+    console.log('🔔 Cron: ส่งแจ้งเตือนหนี้บ้านแล้ว');
+  } catch (e) { console.error('Cron bank error:', e.message); }
+});
+
+// วันที่ 10 เวลา 09:00 ไทย — แจ้งเตือนค่าเช่าค้าง
+cron.schedule('0 2 10 * *', async () => {
+  if (!OWNER_ID) return;
+  try {
+    const summary = await getMonthlySummary();
+    const expected = { 'ห้อง 1': 3500, 'ห้อง 2': 1000, 'ห้อง 3': 8000, 'คอนโด': 10000 };
+    const unpaid = Object.entries(expected).filter(([r, a]) => (summary.byRoom[r] || 0) < a);
+    if (unpaid.length === 0) return; // ไม่มีค้าง ไม่ต้องแจ้ง
+    const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+    const monthName = THAI_MONTHS[new Date().getMonth() + 1];
+    const lines = unpaid.map(([r, a]) => {
+      const paid = summary.byRoom[r] || 0;
+      return `❌ ${r} — ค้าง ฿${fmt(a - paid)}`;
+    }).join('\n');
+    await push(OWNER_ID,
+      `⚠️ แจ้งเตือนค่าเช่า — ${monthName}\n\n${lines}\n\nกรุณาติดตามการชำระเงินครับ`,
+      QR_RENTAL
+    );
+    console.log('🔔 Cron: ส่งแจ้งเตือนค่าเช่าแล้ว');
+  } catch (e) { console.error('Cron rent error:', e.message); }
+});
+
+// วันที่ 14 เวลา 09:00 ไทย — แจ้งเตือนค่าน้ำพ่วงค้าง
+cron.schedule('0 2 14 * *', async () => {
+  if (!OWNER_ID) return;
+  try {
+    const wStatus = await getWaterStatus();
+    const overdue = await getWaterOverdue();
+    const hasUnpaidMain = wStatus.lastMain && !wStatus.lastMain.paid;
+    if (overdue.length === 0 && !hasUnpaidMain) return; // ไม่มีค้าง
+    const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+    const monthName = THAI_MONTHS[new Date().getMonth() + 1];
+    const lines = [];
+    if (overdue.length > 0) lines.push(...overdue.map(o => `❌ ${o.tenant} — ค้าง ฿${fmt(o.balance)}`));
+    if (hasUnpaidMain) lines.push(`⏳ ยังไม่จ่ายหมี่ ฿${fmt(wStatus.lastMain.totalAmount)}`);
+    await push(OWNER_ID,
+      `⚠️ แจ้งเตือนค่าน้ำพ่วง — ${monthName}\n\n${lines.join('\n')}\n\nกรุณาติดตามการชำระเงินครับ`,
+      QR_WATER
+    );
+    console.log('🔔 Cron: ส่งแจ้งเตือนค่าน้ำแล้ว');
+  } catch (e) { console.error('Cron water error:', e.message); }
+});
+
 app.listen(PORT, () => console.log(`Port ${PORT}`));
