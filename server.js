@@ -1025,6 +1025,48 @@ app.get('/debug-rubber', async (req, res) => {
     res.json({ token_ok: true, debt_rows: d1.values?.length||0, debt_error: d1.error, sheet1_rows: d2.values?.length||0, sheet1_error: d2.error, rubber_id: RUBBER_ID });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+// ── Init Headers (เรียกครั้งเดียว) ───────────────────────────────────────────
+app.get('/init-sheets', async (req, res) => {
+  try {
+    const { appendToSheet } = require('./sheets');
+    const results = [];
+
+    const tabs = [
+      { range: 'หนี้_รับเงิน!A1',   values: ['วันที่', 'เดือน', 'ชื่อ', 'ยอด', 'หมายเหตุ'] },
+      { range: 'หนี้_ส่งธนาคาร!A1', values: ['วันที่', 'เดือน', 'ยอด', 'หมายเหตุ'] },
+      { range: 'น้ำ_พ่วง!A1',       values: ['เดือน', 'ผู้เช่า', 'มิเตอร์เก่า', 'มิเตอร์ใหม่', 'หน่วย', 'ราคา/หน่วย', 'ยอด', 'วันออกบิล', 'วันครบกำหนด'] },
+      { range: 'น้ำ_รับเงิน!A1',    values: ['วันที่', 'ผู้เช่า', 'เดือน', 'ยอด', 'หมายเหตุ'] },
+      { range: 'น้ำ_บิลหลัก!A1',    values: ['วันที่', 'เดือน', 'หน่วยรวม', 'ยอดรวม', 'สถานะ', 'วันจ่ายหมี่'] },
+    ];
+
+    // ใช้ Sheets API เขียนตรงไปที่ A1 (ไม่ใช้ append)
+    const crypto = require('crypto');
+    const SA = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+    const SHEET_ID = '1IWF5gZ_w0EqbMu5uAHMF4w3I6PAgxbKb_aMeRQNDXgE';
+
+    const now = Math.floor(Date.now() / 1000);
+    const b64 = s => Buffer.from(typeof s === 'string' ? s : JSON.stringify(s)).toString('base64url');
+    const header = b64({ alg: 'RS256', typ: 'JWT' });
+    const claim  = b64({ iss: SA.client_email, scope: 'https://www.googleapis.com/auth/spreadsheets', aud: 'https://oauth2.googleapis.com/token', exp: now + 3600, iat: now });
+    const sign = crypto.createSign('RSA-SHA256'); sign.update(`${header}.${claim}`);
+    const jwt = `${header}.${claim}.${sign.sign(SA.private_key).toString('base64url')}`;
+    const tokRes = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}` });
+    const { access_token } = await tokRes.json();
+
+    for (const tab of tabs) {
+      const r = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(tab.range)}?valueInputOption=RAW`,
+        { method: 'PUT', headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: [tab.values], majorDimension: 'ROWS' }) }
+      );
+      const d = await r.json();
+      results.push({ tab: tab.range, ok: r.ok, updatedCells: d.updatedCells });
+    }
+
+    res.json({ success: true, results });
+  } catch (e) { res.status(500).send('❌ ' + e.message); }
+});
+
 app.get('/', (req, res) => res.send('Rental LINE Bot ✅'));
 app.get('/sa-email', (req, res) => {
   try {
