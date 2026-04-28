@@ -1074,6 +1074,18 @@ app.get('/debug-rubber', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 // ── Init Headers (เรียกครั้งเดียว) ───────────────────────────────────────────
+// ── บันทึกจ่ายครบเมษา 2569 (ใช้ครั้งเดียว) ──────────────────────────────────
+app.get('/seed-april-paid', async (req, res) => {
+  try {
+    const results = [];
+    for (const name of BANK_MEMBERS) {
+      await appendBankPayment(name, BANK_MONTHLY, 'บันทึกย้อนหลัง เม.ย. 2569');
+      results.push(`✅ ${name} ฿${BANK_MONTHLY}`);
+    }
+    res.send('บันทึกเมษาครบแล้วครับ:\n' + results.join('\n'));
+  } catch (e) { res.status(500).send('❌ ' + e.message); }
+});
+
 app.get('/init-sheets', async (req, res) => {
   try {
     const { appendToSheet } = require('./sheets');
