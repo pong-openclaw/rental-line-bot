@@ -283,7 +283,7 @@ app.post('/webhook', async (req, res) => {
       // ── ตั้ง section ตามเมนูที่กด ────────────────────────────────────────────
       if (/^ห้องเช่า|รับเงิน|ค่าเช่า|ยอดค้าง|สรุป|ประวัติรายรับ|บันทึกมิเตอร์$/i.test(text)) SECTION.set(userId, 'rental');
       else if (/^สวนยาง|ขายยาง|เบิกเงิน|คืนเงิน|ยอดค้างไท|ประวัติยาง|สรุปยาง$/i.test(text)) SECTION.set(userId, 'rubber');
-      else if (/^หนี้บ้าน|รับเงินหนี้บ้าน|ยอดค้างบ้าน|ส่งธนาคารแล้ว|ประวัติหนี้บ้าน$/i.test(text)) SECTION.set(userId, 'bank');
+      else if (/^หนี้บ้าน|รับเงินหนี้บ้าน|เลือกรับเงิน|ยอดค้างบ้าน|ส่งธนาคารแล้ว|ประวัติหนี้บ้าน$/i.test(text)) SECTION.set(userId, 'bank');
       else if (/^น้ำพ่วง|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ$/i.test(text)) SECTION.set(userId, 'water');
 
       // ── Rich Menu: ห้องเช่า ──────────────────────────────────────────────
@@ -678,16 +678,62 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
-      // รับเงินจากสมาชิก: "รับเงินพี่หมา 3575"
+      // รับเงินหนี้บ้าน → เลือกชื่อ
+      if (/^รับเงินหนี้บ้าน$/i.test(text)) {
+        const qr = { items: BANK_MEMBERS.map(n => ({
+          type:'action', action:{ type:'message', label:n, text:`เลือกรับเงิน ${n}` }
+        })).concat([{ type:'action', action:{ type:'message', label:'↩️ กลับ', text:'หนี้บ้าน' } }]) };
+        await fetch('https://api.line.me/v2/bot/message/reply', {
+          method:'POST', headers:{ Authorization:`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({ replyToken: rt, messages: [{ type:'text', text:'💵 เลือกคนที่รับเงินครับ', quickReply: qr }] })
+        });
+        continue;
+      }
+
+      // กดชื่อสมาชิก → ถามจำนวน (guided)
+      {
+        const mBankName = text.match(/^เลือกรับเงิน\s*(พี่หมา|พี่แมว|พี่อ๊อด|อู๊ด)$/i);
+        if (mBankName) {
+          const name = mBankName[1];
+          SECTION.set(userId, 'bank');
+          const status = await getBankStatus();
+          const balance = status.members[name].balance;
+          SESSION.set(userId, { step: 'bank_pay_amount', name });
+          await reply(rt,
+            `💵 รับเงิน${name}\n💳 ยอดค้าง: ฿${fmt(balance)}\n\nรับเท่าไหร่ครับ?`,
+            QR_GUIDED
+          );
+          continue;
+        }
+      }
+
+      // guided: รอจำนวนเงิน
+      if (sess?.step === 'bank_pay_amount') {
+        const amt = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 3575', QR_GUIDED); continue; }
+        SESSION.delete(userId);
+        const { name } = sess;
+        await appendBankPayment(name, amt);
+        const status = await getBankStatus();
+        const balance = status.members[name].balance;
+        await reply(rt,
+          `✅ รับเงิน${name} ฿${fmt(amt)} แล้วครับ\n`
+          + (balance <= 0 ? `🎉 ${name} ไม่มียอดค้างแล้ว` : `💳 ${name} ยังค้างอยู่: ฿${fmt(balance)}`),
+          QR_BANK
+        );
+        continue;
+      }
+
+      // พิมพ์เองตรงๆ: "รับเงินพี่หมา 3575"
       {
         const mBank = text.match(/^รับเงิน(พี่หมา|พี่แมว|พี่อ๊อด|อู๊ด)\s+(\d[\d,]*)/i);
         if (mBank) {
           const name   = mBank[1];
           const amount = parseInt(mBank[2].replace(/,/g, ''));
+          SECTION.set(userId, 'bank');
           await appendBankPayment(name, amount);
           const status = await getBankStatus();
-          const m = status.members[name];
-          const balance = m.balance;
+          const balance = status.members[name].balance;
           await reply(rt,
             `✅ รับเงิน${name} ฿${fmt(amount)} แล้วครับ\n`
             + (balance <= 0 ? `🎉 ${name} ไม่มียอดค้างแล้ว` : `💳 ${name} ยังค้างอยู่: ฿${fmt(balance)}`),
@@ -695,17 +741,6 @@ app.post('/webhook', async (req, res) => {
           );
           continue;
         }
-      }
-
-      if (/^รับเงินหนี้บ้าน$/i.test(text)) {
-        const qr = { items: BANK_MEMBERS.map(n => ({
-          type:'action', action:{ type:'message', label:n, text:`รับเงิน${n} ${BANK_MONTHLY}` }
-        })).concat([{ type:'action', action:{ type:'message', label:'↩️ กลับ', text:'หนี้บ้าน' } }]) };
-        await fetch('https://api.line.me/v2/bot/message/reply', {
-          method:'POST', headers:{ Authorization:`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
-          body: JSON.stringify({ replyToken: rt, messages: [{ type:'text', text:'💵 เลือกคนที่รับเงินครับ', quickReply: qr }] })
-        });
-        continue;
       }
 
       if (/^ยอดค้างบ้าน$/i.test(text)) {
