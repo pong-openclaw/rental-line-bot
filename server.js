@@ -1047,13 +1047,17 @@ cron.schedule('0 2 6 * *', async () => {
   if (!OWNER_ID) return;
   try {
     const status = await getBankStatus();
-    const overdue = await getBankOverdue();
-    if (overdue.length === 0) return; // ไม่มีค้าง ไม่ต้องแจ้ง
     const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
     const monthName = THAI_MONTHS[new Date().getMonth() + 1];
-    const lines = overdue.map(o => `❌ ${o.name} — ค้าง ฿${fmt(o.balance)}`).join('\n');
+    const unpaid = BANK_MEMBERS.filter(n => status.members[n].balance > 0);
+    if (unpaid.length === 0 && status.bankSent) return; // ทุกคนจ่ายครบ + ส่งธนาคารแล้ว
+    const lines = BANK_MEMBERS.map(n => {
+      const b = status.members[n].balance;
+      return b <= 0 ? `✅ ${n} — ชำระครบแล้ว` : `❌ ${n} — ค้าง ฿${fmt(b)}`;
+    });
+    if (!status.bankSent) lines.push(`⏳ ยังไม่ได้ส่งธนาคาร`);
     await push(OWNER_ID,
-      `⚠️ แจ้งเตือนหนี้บ้าน ธอส. — ${monthName}\n\n${lines}\n\nกรุณาติดตามการชำระเงินครับ`,
+      `⚠️ แจ้งเตือนหนี้บ้าน ธอส. — ${monthName}\n\n${lines.join('\n')}\n\nกรุณาติดตามการชำระเงินครับ`,
       QR_BANK
     );
     console.log('🔔 Cron: ส่งแจ้งเตือนหนี้บ้านแล้ว');
@@ -1087,13 +1091,15 @@ cron.schedule('0 2 14 * *', async () => {
   if (!OWNER_ID) return;
   try {
     const wStatus = await getWaterStatus();
-    const overdue = await getWaterOverdue();
     const hasUnpaidMain = wStatus.lastMain && !wStatus.lastMain.paid;
-    if (overdue.length === 0 && !hasUnpaidMain) return; // ไม่มีค้าง
+    const unpaidTenants = WATER_TENANTS.filter(t => (wStatus.tenants[t]?.balance || 0) > 0);
+    if (unpaidTenants.length === 0 && !hasUnpaidMain) return; // ไม่มีค้าง
     const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
     const monthName = THAI_MONTHS[new Date().getMonth() + 1];
-    const lines = [];
-    if (overdue.length > 0) lines.push(...overdue.map(o => `❌ ${o.tenant} — ค้าง ฿${fmt(o.balance)}`));
+    const lines = WATER_TENANTS.map(t => {
+      const b = wStatus.tenants[t]?.balance || 0;
+      return b <= 0 ? `✅ ${t} — ชำระครบแล้ว` : `❌ ${t} — ค้าง ฿${fmt(b)}`;
+    });
     if (hasUnpaidMain) lines.push(`⏳ ยังไม่จ่ายหมี่ ฿${fmt(wStatus.lastMain.totalAmount)}`);
     await push(OWNER_ID,
       `⚠️ แจ้งเตือนค่าน้ำพ่วง — ${monthName}\n\n${lines.join('\n')}\n\nกรุณาติดตามการชำระเงินครับ`,
