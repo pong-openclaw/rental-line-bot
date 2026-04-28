@@ -146,6 +146,15 @@ function fmt(n) { return Number(n).toLocaleString('th-TH', { minimumFractionDigi
 // ── Webhook ───────────────────────────────────────────────────────────────────
 // ── Session state (guided input) ─────────────────────────────────────────────
 const SESSION = new Map(); // userId → { step, data }
+const SECTION = new Map(); // userId → 'rental'|'rubber'|'bank'|'water' (คงอยู่ข้ามคำสั่ง)
+
+function sectionQR(userId) {
+  const s = SECTION.get(userId);
+  if (s === 'bank')   return QR_BANK;
+  if (s === 'water')  return QR_WATER;
+  if (s === 'rubber') return QR_RUBBER;
+  return QR_RENTAL;
+}
 
 let _lastHook = null;
 
@@ -270,6 +279,12 @@ app.post('/webhook', async (req, res) => {
         );
         continue;
       }
+
+      // ── ตั้ง section ตามเมนูที่กด ────────────────────────────────────────────
+      if (/^ห้องเช่า|รับเงิน|ค่าเช่า|ยอดค้าง|สรุป|ประวัติรายรับ|บันทึกมิเตอร์$/i.test(text)) SECTION.set(userId, 'rental');
+      else if (/^สวนยาง|ขายยาง|เบิกเงิน|คืนเงิน|ยอดค้างไท|ประวัติยาง|สรุปยาง$/i.test(text)) SECTION.set(userId, 'rubber');
+      else if (/^หนี้บ้าน|รับเงินหนี้บ้าน|ยอดค้างบ้าน|ส่งธนาคารแล้ว|ประวัติหนี้บ้าน$/i.test(text)) SECTION.set(userId, 'bank');
+      else if (/^น้ำพ่วง|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ$/i.test(text)) SECTION.set(userId, 'water');
 
       // ── Rich Menu: ห้องเช่า ──────────────────────────────────────────────
       if (/^ห้องเช่า$/i.test(text)) {
@@ -941,13 +956,11 @@ app.post('/webhook', async (req, res) => {
       }
 
       // ── Fallback ───────────────────────────────────────────────────────────
-      await reply(rt,
-        `ไม่เข้าใจครับ 😅 พิมพ์ "help" เพื่อดูวิธีใช้`
-      );
+      await reply(rt, `ไม่เข้าใจครับ 😅 พิมพ์ "help" เพื่อดูวิธีใช้`, sectionQR(userId));
 
     } catch (err) {
       console.error('Error:', err);
-      await reply(rt, `❌ เกิดข้อผิดพลาด: ${err.message}`);
+      await reply(rt, `❌ เกิดข้อผิดพลาด: ${err.message}`, sectionQR(userId));
     }
   }
 });
