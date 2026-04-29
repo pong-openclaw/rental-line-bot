@@ -2,7 +2,7 @@ const express = require('express');
 const crypto  = require('crypto');
 const {
   appendRent, appendWaterElec, getLastMeters, getRecentIncome, getAllIncome,
-  getMonthlySummary, getLastWaterElecBill, isWaterBillPaid,
+  getMonthlySummary, getLastWaterElecBill, getAllWaterElecBills, isWaterBillPaid,
   appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber,
   BANK_MEMBERS, BANK_MONTHLY,
   appendBankPayment, appendBankSent, getBankStatus, getBankHistory, getBankOverdue,
@@ -1037,9 +1037,10 @@ app.post('/webhook', async (req, res) => {
         const todayStr  = today.toISOString().slice(0,10);
         const monthName = THAI_MONTHS_F[today.getMonth() + 1];
 
-        const [allIncome, bankStatus, rubBal, areeHist, kaidamHist] = await Promise.all([
+        const [allIncome, bankStatus, rubBal, areeHist, kaidamHist, weBills] = await Promise.all([
           getAllIncome(), getBankStatus(), getWorkerBalance(),
-          getWaterHistory('อารี', 12), getWaterHistory('ไข่ดำ', 12)
+          getWaterHistory('อารี', 12), getWaterHistory('ไข่ดำ', 12),
+          getAllWaterElecBills()
         ]);
 
         // ── 🏠 ห้องเช่า: ตรวจ 3 เดือนย้อนหลัง ────────────────────────────────
@@ -1065,6 +1066,14 @@ app.post('/webhook', async (req, res) => {
           }
         }
 
+        // ── 💡 น้ำ/ไฟ ห้อง 3: ตรวจบิลที่ยังไม่รับเงิน ──────────────────────────
+        const paidWeMonths = new Set(
+          allIncome.filter(r => r[2] === 'ค่าน้ำไฟ').map(r => r[5]).filter(Boolean)
+        );
+        const weOverdue = weBills
+          .filter(b => !paidWeMonths.has(b.month))
+          .map(b => `  ❌ น้ำ/ไฟ ${b.month}: ฿${fmt(b.wCost)}+฿${fmt(b.eCost)} = ฿${fmt(b.total)}`);
+
         // ── 🏦 หนี้บ้าน: ยอดค้างสะสม ─────────────────────────────────────────
         const bankOverdue = [];
         for (const name of BANK_MEMBERS) {
@@ -1088,7 +1097,8 @@ app.post('/webhook', async (req, res) => {
           `💰 ยอดค้างทั้งหมด — ${monthName}`,
           `━━━━━━━━━━━━━━━━━━━━`,
           `🏠 ห้องเช่า`,
-          ...(rentOverdue.length > 0 ? rentOverdue : [`  ✅ ไม่มียอดค้าง`]),
+          ...(rentOverdue.length > 0 ? rentOverdue : [`  ✅ ค่าเช่า ไม่มียอดค้าง`]),
+          ...(weOverdue.length > 0 ? weOverdue : [`  ✅ น้ำ/ไฟ ไม่มียอดค้าง`]),
           ``,
           `🌿 สวนยาง`,
           rubBal > 0 ? `  💳 ยอดเบิกไทค้าง: ฿${fmt(rubBal)}` : `  ✅ ไม่มียอดค้างไท`,

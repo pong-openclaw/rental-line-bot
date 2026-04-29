@@ -103,6 +103,19 @@ async function getLastWaterElecBill() {
   };
 }
 
+// คืน [{month, wCost, eCost, total}] ทุกแถวที่มีข้อมูล (ใช้ตรวจยอดค้าง)
+async function getAllWaterElecBills() {
+  const rows = await getValues('น้ำไฟ_ห้อง3!A:J');
+  return rows
+    .filter(r => r[0] && r[0] !== 'เดือน/ปี' && r[0] !== 'ตัวอย่าง')
+    .map(r => ({
+      month: r[0],
+      wCost: parseFloat(r[4]) || 0,
+      eCost: parseFloat(r[8]) || 0,
+      total: parseFloat(r[9]) || 0,
+    }));
+}
+
 // ── สวนยาง ────────────────────────────────────────────────────────────────────
 
 async function appendRubberSale(values) {
@@ -332,7 +345,7 @@ async function getWaterOverdue() {
 module.exports = {
   // ห้องเช่า
   appendRent, appendWaterElec, getLastMeters, getRecentIncome, getAllIncome,
-  getMonthlySummary, getLastWaterElecBill, isWaterBillPaid,
+  getMonthlySummary, getLastWaterElecBill, getAllWaterElecBills, isWaterBillPaid,
   // สวนยาง
   appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber,
   // หนี้ธนาคาร
