@@ -548,15 +548,52 @@ app.post('/webhook', async (req, res) => {
 
       // ── Rich Menu: ภาพรวม ─────────────────────────────────────────────────
       if (/^ภาพรวม$/i.test(text)) {
-        const [sum, meters] = await Promise.all([getMonthlySummary(), getLastMeters()]);
-        const roomLines = Object.entries(sum.byRoom).map(([r,a]) => `  • ${r}: ฿${a.toLocaleString('th-TH')}`).join('\n');
+        const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+        const monthName = THAI_MONTHS[new Date().getMonth() + 1];
+        const [sum, bankStatus, wStatus, rubberRows, rubBal] = await Promise.all([
+          getMonthlySummary(), getBankStatus(), getWaterStatus(), getRecentRubber(2), getWorkerBalance()
+        ]);
+
+        // 🏠 ห้องเช่า
+        const expected = { 'ห้อง 1': 3500, 'ห้อง 2': 1000, 'ห้อง 3': 8000, 'คอนโด': 10000 };
+        const rentLines = Object.entries(expected).map(([r, a]) =>
+          (sum.byRoom[r] || 0) >= a ? `  ✅ ${r} ฿${a.toLocaleString('th-TH')}` : `  ❌ ${r} ยังไม่รับ`
+        ).join('\n');
+
+        // 🌿 สวนยาง
+        const TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+        const rubLines = rubberRows.length > 0
+          ? rubberRows.map(r => {
+              const d = new Date(r[0]);
+              return `  • ${d.getDate()} ${TH_M[d.getMonth()]} — ${r[2]} กก. × ฿${r[3]} = ฿${fmt(r[4])}`;
+            }).join('\n')
+          : '  ยังไม่มีข้อมูล';
+
+        // 🏦 หนี้บ้าน
+        const bankLines = BANK_MEMBERS.map(n => {
+          const b = bankStatus.members[n].balance;
+          return b <= 0 ? `✅ ${n}` : `❌ ${n}`;
+        }).join(' | ');
+        const bankSentLine = bankStatus.bankSent ? `  ✅ ส่งธนาคารแล้ว` : `  ⏳ ยังไม่ส่งธนาคาร`;
+
+        // 💧 ค่าน้ำพ่วง
+        const waterLines = WATER_TENANTS.map(t => {
+          const b = wStatus.tenants[t]?.balance || 0;
+          return b <= 0 ? `  ✅ ${t} — จ่ายแล้ว` : `  ❌ ${t} — ค้าง ฿${fmt(b)}`;
+        }).join('\n');
+        const mainLine = wStatus.lastMain
+          ? (wStatus.lastMain.paid ? `  ✅ จ่ายหมี่แล้ว` : `  ⏳ ยังไม่จ่ายหมี่ (฿${fmt(wStatus.lastMain.totalAmount)})`)
+          : `  📋 ยังไม่มีบิล`;
+
         await reply(rt,
-          `📊 ภาพรวมเดือนนี้\n\n`
-          + `🏠 ห้องเช่า: ฿${sum.total.toLocaleString('th-TH')}\n`
-          + (roomLines ? roomLines + '\n' : '')
-          + `\n💧 มิเตอร์น้ำ: ${meters.wPrev}\n`
-          + `⚡ มิเตอร์ไฟ: ${meters.ePrev}\n\n`
-          + `🌿 สวนยาง: (กด สวนยาง → สรุปยาง)`
+          `📊 ภาพรวม — ${monthName}\n`
+          + `━━━━━━━━━━━━━━━━━━━━\n`
+          + `🏠 ห้องเช่า\n${rentLines}\n`
+          + `  💰 รวม ฿${sum.total.toLocaleString('th-TH')}\n`
+          + `\n🌿 สวนยาง (${rubberRows.length} รอบล่าสุด)\n${rubLines}\n`
+          + `  💳 ยอดค้างไท: ฿${fmt(rubBal)}\n`
+          + `\n🏦 หนี้บ้าน\n  ${bankLines}\n${bankSentLine}\n`
+          + `\n💧 ค่าน้ำพ่วง\n${waterLines}\n${mainLine}`
         );
         continue;
       }
