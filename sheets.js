@@ -74,6 +74,11 @@ async function getRecentIncome(n = 5) {
   return data.slice(-n);
 }
 
+async function getAllIncome() {
+  const rows = await getValues('รายรับ!A:F');
+  return rows.filter(r => r[0] && r[0] !== 'วันที่');
+}
+
 async function getMonthlySummary() {
   const rows = await getValues('รายรับ!A:F');
   const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
@@ -321,7 +326,7 @@ async function getWaterOverdue() {
 
 module.exports = {
   // ห้องเช่า
-  appendRent, appendWaterElec, getLastMeters, getRecentIncome,
+  appendRent, appendWaterElec, getLastMeters, getRecentIncome, getAllIncome,
   getMonthlySummary, getLastWaterElecBill, isWaterBillPaid,
   // สวนยาง
   appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber,

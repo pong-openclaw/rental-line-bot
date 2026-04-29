@@ -77,8 +77,9 @@ async function createImage() {
 
     <!-- แถว 2: สรุปทั้งหมด -->
     <text x="2083" y="1096" font-size="160" text-anchor="middle" dominant-baseline="middle">📋</text>
-    <text x="2083" y="1330" font-size="85"  font-weight="bold" text-anchor="middle" fill="white" font-family="Tahoma,Arial,sans-serif">สรุปทั้งหมด</text>
-    <text x="2083" y="1508" font-size="65"  text-anchor="middle" fill="rgba(255,255,255,0.75)" font-family="Tahoma,Arial,sans-serif">SUMMARY</text>
+    <text x="2083" y="1310" font-size="80"  font-weight="bold" text-anchor="middle" fill="white" font-family="Tahoma,Arial,sans-serif">ยอดค้าง</text>
+    <text x="2083" y="1415" font-size="80"  font-weight="bold" text-anchor="middle" fill="white" font-family="Tahoma,Arial,sans-serif">ทั้งหมด</text>
+    <text x="2083" y="1528" font-size="65"  text-anchor="middle" fill="rgba(255,255,255,0.75)" font-family="Tahoma,Arial,sans-serif">OVERDUE</text>
   </svg>`;
 
   const imgPath = path.join(__dirname, 'richmenu.png');
@@ -115,7 +116,7 @@ async function createRichMenu() {
       // แถว 2
       { bounds: { x: 0,    y: 843, width: 833,  height: 843 }, action: { type: 'message', text: 'หนี้บ้าน' } },
       { bounds: { x: 833,  y: 843, width: 834,  height: 843 }, action: { type: 'message', text: 'น้ำพ่วง' } },
-      { bounds: { x: 1667, y: 843, width: 833,  height: 843 }, action: { type: 'message', text: 'สรุปทั้งหมด' } },
+      { bounds: { x: 1667, y: 843, width: 833,  height: 843 }, action: { type: 'message', text: 'ยอดค้างทั้งหมด' } },
     ]
   };
   const res = await fetch('https://api.line.me/v2/bot/richmenu', {

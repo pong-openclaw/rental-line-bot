@@ -79,8 +79,9 @@ const svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
 
   <!-- แถว 2: สรุปทั้งหมด -->
   <text x="2083" y="1096" font-size="160" text-anchor="middle" dominant-baseline="middle">&#x1F4CB;</text>
-  <text x="2083" y="1330" font-size="85"  font-weight="bold" text-anchor="middle" fill="white" font-family="Tahoma,Arial,sans-serif">&#x0E2A;&#x0E23;&#x0E38;&#x0E1B;&#x0E17;&#x0E31;&#x0E49;&#x0E07;&#x0E2B;&#x0E21;&#x0E14;</text>
-  <text x="2083" y="1508" font-size="65"  text-anchor="middle" fill="rgba(255,255,255,0.75)" font-family="Tahoma,Arial,sans-serif">SUMMARY</text>
+  <text x="2083" y="1310" font-size="80"  font-weight="bold" text-anchor="middle" fill="white" font-family="Tahoma,Arial,sans-serif">&#x0E22;&#x0E2D;&#x0E14;&#x0E04;&#x0E49;&#x0E32;&#x0E07;</text>
+  <text x="2083" y="1415" font-size="80"  font-weight="bold" text-anchor="middle" fill="white" font-family="Tahoma,Arial,sans-serif">&#x0E17;&#x0E31;&#x0E49;&#x0E07;&#x0E2B;&#x0E21;&#x0E14;</text>
+  <text x="2083" y="1528" font-size="65"  text-anchor="middle" fill="rgba(255,255,255,0.75)" font-family="Tahoma,Arial,sans-serif">OVERDUE</text>
 </svg>`;
 
 sharp(Buffer.from(svg, 'utf8'))

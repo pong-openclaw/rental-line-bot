@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto  = require('crypto');
 const {
-  appendRent, appendWaterElec, getLastMeters, getRecentIncome,
+  appendRent, appendWaterElec, getLastMeters, getRecentIncome, getAllIncome,
   getMonthlySummary, getLastWaterElecBill, isWaterBillPaid,
   appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber,
   BANK_MEMBERS, BANK_MONTHLY,
@@ -181,7 +181,7 @@ app.post('/webhook', async (req, res) => {
     // เก็บ userId เจ้าของ
     if (!OWNER_ID) OWNER_ID = userId;
     // คำสั่งหลัก — ล้าง session ทิ้งก่อนเสมอ
-    const MAIN_CMDS = /^(ห้องเช่า|สวนยาง|ภาพรวม|ค่าเช่า|เช่า|รับเงิน|ค่าน้ำไฟ|ประวัติรายรับ|สรุป|รายรับ|มิเตอร์|ยอดค้าง|ยอดค้างไท|ประวัติยาง|สรุปยาง|ขายยาง|เบิกเงิน|คืนเงิน|บันทึกมิเตอร์|รับเงินแล้ว|หนี้บ้าน|รับเงินหนี้บ้าน|ยอดค้างบ้าน|ส่งธนาคารแล้ว|ประวัติหนี้บ้าน|น้ำพ่วง|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ|สรุปทั้งหมด|help|ช่วย|วิธีใช้|menu|เมนู)$/i;
+    const MAIN_CMDS = /^(ห้องเช่า|สวนยาง|ภาพรวม|ค่าเช่า|เช่า|รับเงิน|ค่าน้ำไฟ|ประวัติรายรับ|สรุป|รายรับ|มิเตอร์|ยอดค้าง|ยอดค้างไท|ประวัติยาง|สรุปยาง|ขายยาง|เบิกเงิน|คืนเงิน|บันทึกมิเตอร์|รับเงินแล้ว|หนี้บ้าน|รับเงินหนี้บ้าน|ยอดค้างบ้าน|ส่งธนาคารแล้ว|ประวัติหนี้บ้าน|น้ำพ่วง|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ|ยอดค้างทั้งหมด|สรุปทั้งหมด|help|ช่วย|วิธีใช้|menu|เมนู)$/i;
     if (MAIN_CMDS.test(text)) SESSION.delete(userId);
     let sess = SESSION.get(userId);
 
@@ -285,6 +285,7 @@ app.post('/webhook', async (req, res) => {
       else if (/^สวนยาง|ขายยาง|เบิกเงิน|คืนเงิน|ยอดค้างไท|ประวัติยาง|สรุปยาง$/i.test(text)) SECTION.set(userId, 'rubber');
       else if (/^หนี้บ้าน|รับเงินหนี้บ้าน|เลือกรับเงิน|ยอดค้างบ้าน|ส่งธนาคารแล้ว|ประวัติหนี้บ้าน$/i.test(text)) SECTION.set(userId, 'bank');
       else if (/^น้ำพ่วง|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ$/i.test(text)) SECTION.set(userId, 'water');
+      else if (/^ยอดค้างทั้งหมด|สรุปทั้งหมด$/i.test(text)) SECTION.set(userId, 'rental');
 
       // ── Rich Menu: ห้องเช่า ──────────────────────────────────────────────
       if (/^ห้องเช่า$/i.test(text)) {
@@ -1019,35 +1020,77 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
-      // ── สรุปทั้งหมด ────────────────────────────────────────────────────────
-      if (/^สรุปทั้งหมด$/i.test(text)) {
-        const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
-        const monthName = THAI_MONTHS[new Date().getMonth() + 1];
-        const [rentSum, bankStatus, wStatus, rubBal] = await Promise.all([
-          getMonthlySummary(), getBankStatus(), getWaterStatus(), getWorkerBalance()
+      // ── ยอดค้างทั้งหมด ─────────────────────────────────────────────────────────
+      if (/^ยอดค้างทั้งหมด$|^สรุปทั้งหมด$/i.test(text)) {
+        const THAI_MONTHS_F = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+        const today     = new Date();
+        const todayDay  = today.getDate();
+        const todayStr  = today.toISOString().slice(0,10);
+        const monthName = THAI_MONTHS_F[today.getMonth() + 1];
+
+        const [allIncome, bankStatus, rubBal, areeHist, kaidamHist] = await Promise.all([
+          getAllIncome(), getBankStatus(), getWorkerBalance(),
+          getWaterHistory('อารี', 12), getWaterHistory('ไข่ดำ', 12)
         ]);
-        const expected = { 'ห้อง 1': 3500, 'ห้อง 2': 1000, 'ห้อง 3': 8000, 'คอนโด': 10000 };
-        const rentLines = Object.entries(expected).map(([r, a]) =>
-          (rentSum.byRoom[r] || 0) >= a ? `  ✅ ${r}` : `  ❌ ${r} ค้าง ฿${fmt(a - (rentSum.byRoom[r] || 0))}`
-        ).join('\n');
-        const bankLines = BANK_MEMBERS.map(n => {
-          const b = bankStatus.members[n].balance;
-          return b <= 0 ? `  ✅ ${n}` : `  ❌ ${n} ค้าง ฿${fmt(b)}`;
-        }).join('\n');
-        const waterLines = WATER_TENANTS.map(t => {
-          const b = wStatus.tenants[t]?.balance || 0;
-          return b <= 0 ? `  ✅ ${t}` : `  ❌ ${t} ค้าง ฿${fmt(b)}`;
-        }).join('\n');
-        await reply(rt,
-          `📊 สรุปทั้งหมด — ${monthName}\n`
-          + `━━━━━━━━━━━━━━━━━━━━\n`
-          + `🏠 ห้องเช่า\n${rentLines}\n`
-          + `\n🏦 หนี้บ้าน ธอส.\n${bankLines}\n`
-          + (bankStatus.bankSent ? `  ✅ ส่งธนาคารแล้ว` : `  ⏳ ยังไม่ส่งธนาคาร`)
-          + `\n\n💧 ค่าน้ำพ่วง\n${waterLines}\n`
-          + (wStatus.lastMain?.paid ? `  ✅ จ่ายหมี่แล้ว` : `  ⏳ ยังไม่จ่ายหมี่`)
-          + `\n\n🌿 สวนยาง\n  💳 ยอดค้างไท: ฿${fmt(rubBal)}`
-        );
+
+        // ── 🏠 ห้องเช่า: ตรวจ 3 เดือนย้อนหลัง ────────────────────────────────
+        const RENT_EXP = { 'ห้อง 1': 3500, 'ห้อง 2': 1000, 'ห้อง 3': 8000, 'คอนโด': 10000 };
+        const paidByMonth = {};
+        for (const r of allIncome) {
+          if (r[2] !== 'ค่าเช่า') continue;
+          const m = r[0].slice(0,7);
+          if (!paidByMonth[m]) paidByMonth[m] = {};
+          paidByMonth[m][r[1]] = (paidByMonth[m] [r[1]] || 0) + (+r[3] || 0);
+        }
+        const rentOverdue = [];
+        for (let i = 0; i <= 2; i++) {
+          const d  = new Date(today.getFullYear(), today.getMonth() - i, 1);
+          const m  = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+          const mn = THAI_MONTHS_F[d.getMonth()+1];
+          if (i === 0 && todayDay <= 5) continue; // ยังไม่ถึงกำหนด (ก่อนวันที่ 6)
+          const paid = paidByMonth[m] || {};
+          for (const [room, amt] of Object.entries(RENT_EXP)) {
+            if ((paid[room] || 0) < amt) {
+              rentOverdue.push(`  ❌ ${room} ฿${(amt-(paid[room]||0)).toLocaleString('th-TH')} (${mn})`);
+            }
+          }
+        }
+
+        // ── 🏦 หนี้บ้าน: ยอดค้างสะสม ─────────────────────────────────────────
+        const bankOverdue = [];
+        for (const name of BANK_MEMBERS) {
+          let bal = bankStatus.members[name].balance;
+          if (todayDay <= 6) bal = Math.max(0, bal - BANK_MONTHLY); // ยังไม่ถึงกำหนดเดือนนี้
+          if (bal > 0) bankOverdue.push(`  ❌ ${name} — ค้าง ฿${fmt(bal)}`);
+        }
+        if (!bankStatus.bankSent && todayDay > 6) bankOverdue.push(`  ⏳ ยังไม่ส่งธนาคาร`);
+
+        // ── 💧 ค่าน้ำพ่วง: ตรวจ dueDate ──────────────────────────────────────
+        const waterOverdue = [];
+        for (const [tenant, hist] of [['อารี', areeHist], ['ไข่ดำ', kaidamHist]]) {
+          let owed = 0; const months = [];
+          for (const h of hist) {
+            if (!h.paid && h.dueDate && h.dueDate < todayStr) { owed += h.amount; months.push(h.month); }
+          }
+          if (owed > 0) waterOverdue.push(`  ❌ ${tenant} — ฿${fmt(owed)} (${months.join(', ')})`);
+        }
+
+        const msg = [
+          `💰 ยอดค้างทั้งหมด — ${monthName}`,
+          `━━━━━━━━━━━━━━━━━━━━`,
+          `🏠 ห้องเช่า`,
+          ...(rentOverdue.length > 0 ? rentOverdue : [`  ✅ ไม่มียอดค้าง`]),
+          ``,
+          `🌿 สวนยาง`,
+          rubBal > 0 ? `  💳 ยอดเบิกไทค้าง: ฿${fmt(rubBal)}` : `  ✅ ไม่มียอดค้างไท`,
+          ``,
+          `🏦 หนี้บ้าน`,
+          ...(bankOverdue.length > 0 ? bankOverdue : [`  ✅ ไม่มียอดค้าง`]),
+          ``,
+          `💧 ค่าน้ำพ่วง`,
+          ...(waterOverdue.length > 0 ? waterOverdue : [`  ✅ ไม่มียอดค้าง`]),
+        ];
+        await reply(rt, msg.join('\n'), sectionQR(userId));
         continue;
       }
 
@@ -1089,7 +1132,7 @@ app.get('/setup-richmenu', async (req, res) => {
           { bounds: { x: 1667, y: 0,   width: 833,  height: 843 }, action: { type: 'message', text: 'ภาพรวม'  } },
           { bounds: { x: 0,    y: 843, width: 833,  height: 843 }, action: { type: 'message', text: 'หนี้บ้าน' } },
           { bounds: { x: 833,  y: 843, width: 834,  height: 843 }, action: { type: 'message', text: 'น้ำพ่วง'  } },
-          { bounds: { x: 1667, y: 843, width: 833,  height: 843 }, action: { type: 'message', text: 'สรุปทั้งหมด' } },
+          { bounds: { x: 1667, y: 843, width: 833,  height: 843 }, action: { type: 'message', text: 'ยอดค้างทั้งหมด' } },
         ]
       })
     }).then(r => r.json());
