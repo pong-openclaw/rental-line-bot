@@ -690,7 +690,7 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
-      // กดชื่อสมาชิก → ถามจำนวน (guided)
+      // กดชื่อสมาชิก → แสดงตัวเลือก จ่ายครบ / ระบุจำนวน
       {
         const mBankName = text.match(/^เลือกรับเงิน\s*(พี่หมา|พี่แมว|พี่อ๊อด|อู๊ด)$/i);
         if (mBankName) {
@@ -698,19 +698,43 @@ app.post('/webhook', async (req, res) => {
           SECTION.set(userId, 'bank');
           const status = await getBankStatus();
           const balance = status.members[name].balance;
-          SESSION.set(userId, { step: 'bank_pay_amount', name });
-          await reply(rt,
-            `💵 รับเงิน${name}\n💳 ยอดค้าง: ฿${fmt(balance)}\n\nรับเท่าไหร่ครับ?`,
-            QR_GUIDED
-          );
+          SESSION.set(userId, { step: 'bank_pay_name', name });
+          const qr = { items: [
+            { type:'action', action:{ type:'message', label:`✅ จ่ายครบ ฿${fmt(BANK_MONTHLY)}`, text:'จ่ายเต็ม' } },
+            { type:'action', action:{ type:'message', label:'✏️ ระบุจำนวน', text:'ระบุจำนวน' } },
+            { type:'action', action:{ type:'message', label:'❌ ยกเลิก', text:'ยกเลิก' } },
+          ]};
+          await reply(rt, `💵 รับเงิน${name}\n💳 ยอดค้าง: ฿${fmt(balance)}\n\nเลือกได้เลยครับ`, qr);
           continue;
         }
+      }
+
+      // กด "จ่ายเต็ม" → บันทึกเต็มจำนวนทันที
+      if (/^จ่ายเต็ม$/i.test(text) && sess?.step === 'bank_pay_name') {
+        SESSION.delete(userId);
+        const { name } = sess;
+        await appendBankPayment(name, BANK_MONTHLY);
+        const status = await getBankStatus();
+        const balance = status.members[name].balance;
+        await reply(rt,
+          `✅ รับเงิน${name} ฿${fmt(BANK_MONTHLY)} แล้วครับ\n`
+          + (balance <= 0 ? `🎉 ${name} ไม่มียอดค้างแล้ว` : `💳 ${name} ยังค้างอยู่: ฿${fmt(balance)}`),
+          QR_BANK
+        );
+        continue;
+      }
+
+      // กด "ระบุจำนวน" → ถามตัวเลข
+      if (/^ระบุจำนวน$/i.test(text) && sess?.step === 'bank_pay_name') {
+        SESSION.set(userId, { step: 'bank_pay_amount', name: sess.name });
+        await reply(rt, `✏️ พิมพ์จำนวนที่รับครับ (บาท)`, QR_GUIDED);
+        continue;
       }
 
       // guided: รอจำนวนเงิน
       if (sess?.step === 'bank_pay_amount') {
         const amt = parseFloat(text.replace(/,/g, ''));
-        if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 3575', QR_GUIDED); continue; }
+        if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 2000', QR_GUIDED); continue; }
         SESSION.delete(userId);
         const { name } = sess;
         await appendBankPayment(name, amt);
