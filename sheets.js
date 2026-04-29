@@ -95,7 +95,12 @@ async function getLastWaterElecBill() {
   const data = rows.filter(r => r[0] && r[0] !== 'เดือน/ปี' && r[0] !== 'ตัวอย่าง');
   if (data.length === 0) return null;
   const last = data[data.length - 1];
-  return { month: last[0], total: parseFloat(last[9]) || 0 };
+  return {
+    month:  last[0],
+    wCost:  parseFloat(last[4]) || 0,
+    eCost:  parseFloat(last[8]) || 0,
+    total:  parseFloat(last[9]) || 0,
+  };
 }
 
 // ── สวนยาง ────────────────────────────────────────────────────────────────────
