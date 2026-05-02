@@ -61,9 +61,11 @@ const QR_BANK = { items: [
   { type:'action', action:{ type:'message', label:'📜 ประวัติ',     text:'ประวัติหนี้บ้าน' } },
 ]};
 const QR_WATER = { items: [
-  { type:'action', action:{ type:'message', label:'🔢 บันทึกมิเตอร์', text:'บันทึกน้ำพ่วง' } },
+  { type:'action', action:{ type:'message', label:'📋 ออกบิลประปา',  text:'ออกบิลประปา' } },
+  { type:'action', action:{ type:'message', label:'💧 น้ำอารี',       text:'น้ำอารี' } },
+  { type:'action', action:{ type:'message', label:'💧 น้ำไข่ดำ',      text:'น้ำไข่ดำ' } },
   { type:'action', action:{ type:'message', label:'⏰ ยอดค้าง',       text:'ยอดค้างน้ำ' } },
-  { type:'action', action:{ type:'message', label:'💧 จ่ายหมี่แล้ว',  text:'จ่ายหมี่แล้ว' } },
+  { type:'action', action:{ type:'message', label:'💰 จ่ายหมี่แล้ว',  text:'จ่ายหมี่แล้ว' } },
   { type:'action', action:{ type:'message', label:'📜 ประวัติอารี',   text:'ประวัติน้ำอารี' } },
   { type:'action', action:{ type:'message', label:'📜 ประวัติไข่ดำ',  text:'ประวัติน้ำไข่ดำ' } },
 ]};
@@ -181,7 +183,7 @@ app.post('/webhook', async (req, res) => {
     // เก็บ userId เจ้าของ
     if (!OWNER_ID) OWNER_ID = userId;
     // คำสั่งหลัก — ล้าง session ทิ้งก่อนเสมอ
-    const MAIN_CMDS = /^(ห้องเช่า|สวนยาง|ภาพรวม|ค่าเช่า|เช่า|รับเงิน|ค่าน้ำไฟ|ประวัติรายรับ|สรุป|รายรับ|มิเตอร์|ยอดค้าง|ยอดค้างไท|ประวัติยาง|สรุปยาง|ขายยาง|เบิกเงิน|คืนเงิน|บันทึกมิเตอร์|รับเงินแล้ว|หนี้บ้าน|รับเงินหนี้บ้าน|ยอดค้างบ้าน|ส่งธนาคารแล้ว|ประวัติหนี้บ้าน|น้ำพ่วง|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ|ยอดค้างทั้งหมด|สรุปทั้งหมด|help|ช่วย|วิธีใช้|menu|เมนู)$/i;
+    const MAIN_CMDS = /^(ห้องเช่า|สวนยาง|ภาพรวม|ค่าเช่า|เช่า|รับเงิน|ค่าน้ำไฟ|ประวัติรายรับ|สรุป|รายรับ|มิเตอร์|ยอดค้าง|ยอดค้างไท|ประวัติยาง|สรุปยาง|ขายยาง|เบิกเงิน|คืนเงิน|บันทึกมิเตอร์|รับเงินแล้ว|หนี้บ้าน|รับเงินหนี้บ้าน|ยอดค้างบ้าน|ส่งธนาคารแล้ว|ประวัติหนี้บ้าน|น้ำพ่วง|ออกบิลประปา|น้ำอารี|น้ำไข่ดำ|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ|ยอดค้างทั้งหมด|สรุปทั้งหมด|help|ช่วย|วิธีใช้|menu|เมนู)$/i;
     if (MAIN_CMDS.test(text)) SESSION.delete(userId);
     let sess = SESSION.get(userId);
 
@@ -284,7 +286,7 @@ app.post('/webhook', async (req, res) => {
       if (/^ห้องเช่า|รับเงิน|ค่าเช่า|ยอดค้าง|สรุป|ประวัติรายรับ|บันทึกมิเตอร์$/i.test(text)) SECTION.set(userId, 'rental');
       else if (/^สวนยาง|ขายยาง|เบิกเงิน|คืนเงิน|ยอดค้างไท|ประวัติยาง|สรุปยาง$/i.test(text)) SECTION.set(userId, 'rubber');
       else if (/^หนี้บ้าน|รับเงินหนี้บ้าน|เลือกรับเงิน|ยอดค้างบ้าน|ส่งธนาคารแล้ว|ประวัติหนี้บ้าน$/i.test(text)) SECTION.set(userId, 'bank');
-      else if (/^น้ำพ่วง|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ$/i.test(text)) SECTION.set(userId, 'water');
+      else if (/^น้ำพ่วง|ออกบิลประปา|น้ำอารี|น้ำไข่ดำ|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ$/i.test(text)) SECTION.set(userId, 'water');
       else if (/^ยอดค้างทั้งหมด|สรุปทั้งหมด$/i.test(text)) SECTION.set(userId, 'rental');
 
       // ── Rich Menu: ห้องเช่า ──────────────────────────────────────────────
@@ -886,79 +888,80 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
-      // บันทึกน้ำพ่วง — guided flow 4 ขั้น
-      if (/^บันทึกน้ำพ่วง$/i.test(text)) {
-        SESSION.set(userId, { step: 'water_main_amount' });
-        await reply(rt, `💧 บันทึกมิเตอร์น้ำพ่วง\n\nขั้นที่ 1/4\n💰 ยอดรวมบิลประปา (฿)?\nเช่น 492.20`, QR_GUIDED);
+      // ── ออกบิลประปา (step 1/2: ยอดบิล) ──────────────────────────────────
+      if (/^ออกบิลประปา$|^บันทึกน้ำพ่วง$/i.test(text)) {
+        SESSION.set(userId, { step: 'water_bill_amount' });
+        await reply(rt, `💧 ออกบิลประปา\n\nขั้นที่ 1/2\n💰 ยอดรวมบิลประปา (฿)?\nเช่น 492.20`, QR_GUIDED);
         continue;
       }
-      if (sess?.step === 'water_main_amount') {
+      if (sess?.step === 'water_bill_amount') {
         const amt = parseFloat(text.replace(/,/g, ''));
         if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 492.20', QR_GUIDED); continue; }
-        SESSION.set(userId, { ...sess, step: 'water_main_units', mainAmount: amt });
-        await reply(rt, `✅ ยอดบิล ฿${fmt(amt)}\n\nขั้นที่ 2/4\n🔢 หน่วยรวมในบิล?\nเช่น 24`, QR_GUIDED);
+        SESSION.set(userId, { step: 'water_bill_units', mainAmount: amt });
+        await reply(rt, `✅ ยอดบิล ฿${fmt(amt)}\n\nขั้นที่ 2/2\n🔢 หน่วยรวมในบิล?\nเช่น 24`, QR_GUIDED);
         continue;
       }
-      if (sess?.step === 'water_main_units') {
+      if (sess?.step === 'water_bill_units') {
         const units = parseInt(text.replace(/,/g, ''));
         if (isNaN(units) || units <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 24', QR_GUIDED); continue; }
-        const rate = +(sess.mainAmount / units).toFixed(4);
-        const prevAree    = await getLastWaterSubMeter('อารี');
-        const prevKaidam  = await getLastWaterSubMeter('ไข่ดำ');
-        SESSION.set(userId, { ...sess, step: 'water_aree_meter', mainUnits: units, rate, prevAree, prevKaidam });
-        await reply(rt, `✅ ${units} หน่วย → ฿${fmt(rate)}/หน่วย\n\nขั้นที่ 3/4\n💧 มิเตอร์อารีครั้งนี้?\n(ครั้งก่อน: ${prevAree})`, QR_GUIDED);
-        continue;
-      }
-      if (sess?.step === 'water_aree_meter') {
-        const m = parseInt(text.replace(/,/g, ''));
-        if (isNaN(m) || m < (sess.prevAree || 0)) { await reply(rt, `❌ ใส่ตัวเลขครับ (ต้องมากกว่า ${sess.prevAree})`, QR_GUIDED); continue; }
-        SESSION.set(userId, { ...sess, step: 'water_kaidam_meter', areeMeter: m });
-        await reply(rt, `✅ อารี: ${sess.prevAree} → ${m} (${m - sess.prevAree} หน่วย)\n\nขั้นที่ 4/4\n💧 มิเตอร์ไข่ดำครั้งนี้?\n(ครั้งก่อน: ${sess.prevKaidam})`, QR_GUIDED);
-        continue;
-      }
-      if (sess?.step === 'water_kaidam_meter') {
-        const m = parseInt(text.replace(/,/g, ''));
-        if (isNaN(m) || m < (sess.prevKaidam || 0)) { await reply(rt, `❌ ใส่ตัวเลขครับ (ต้องมากกว่า ${sess.prevKaidam})`, QR_GUIDED); continue; }
+        const rate  = +(sess.mainAmount / units).toFixed(4);
+        const month = new Date().toISOString().slice(0, 7);
         SESSION.delete(userId);
+        await appendWaterMainBill(month, units, sess.mainAmount);
+        await reply(rt,
+          `✅ บันทึกบิลประปาแล้วครับ\n\n`
+          + `📋 ${month}\n💰 ฿${fmt(sess.mainAmount)} / ${units} หน่วย\n📊 ฿${fmt(rate)}/หน่วย\n\n`
+          + `กดปุ่ม 💧 น้ำอารี หรือ 💧 น้ำไข่ดำ เพื่อบันทึกมิเตอร์แต่ละคนได้เลยครับ`,
+          QR_WATER
+        );
+        continue;
+      }
 
-        const { mainAmount, mainUnits, rate, prevAree, areeMeter, prevKaidam } = sess;
-        const areeUnits   = areeMeter - prevAree;
-        const kaidamUnits = m - prevKaidam;
-        const areeAmt     = +(areeUnits * rate).toFixed(2);
-        const kaidamAmt   = +(kaidamUnits * rate).toFixed(2);
-        const totalPay    = +(areeAmt + kaidamAmt).toFixed(2);
+      // ── น้ำอารี / น้ำไข่ดำ — บันทึกมิเตอร์แยกรายคน ─────────────────────
+      {
+        const mSub = text.match(/^น้ำ(อารี|ไข่ดำ)$/i);
+        if (mSub) {
+          const tenant = mSub[1];
+          const wStatus = await getWaterStatus();
+          if (!wStatus.lastMain) {
+            await reply(rt, `❌ ยังไม่มีบิลประปาเดือนนี้\nกรุณากด 📋 ออกบิลประปา ก่อนครับ`, QR_WATER);
+            continue;
+          }
+          const { rate, month } = wStatus.lastMain;
+          const prev = await getLastWaterSubMeter(tenant);
+          SESSION.set(userId, { step: 'water_sub_meter', tenant, rate, month, prev });
+          await reply(rt,
+            `💧 มิเตอร์${tenant} — ${month}\n(ครั้งก่อน: ${prev})\n\nใส่มิเตอร์ครั้งนี้ครับ`,
+            QR_GUIDED
+          );
+          continue;
+        }
+      }
+      if (sess?.step === 'water_sub_meter') {
+        const m = parseInt(text.replace(/,/g, ''));
+        if (isNaN(m) || m < (sess.prev || 0)) {
+          await reply(rt, `❌ ต้องมากกว่า ${sess.prev} ครับ`, QR_GUIDED); continue;
+        }
+        SESSION.delete(userId);
+        const { tenant, rate, month, prev } = sess;
+        const units   = m - prev;
+        const amount  = +(units * rate).toFixed(2);
+        const today   = new Date().toISOString().slice(0, 10);
+        const dueD    = new Date(today);
+        dueD.setDate(dueD.getDate() + 7);
+        const dueDateStr = dueD.toISOString().slice(0, 10);
 
-        const today    = new Date().toISOString().slice(0, 10);
-        const dueDate  = new Date(today);
-        dueDate.setDate(dueDate.getDate() + 7);
-        const dueDateStr = dueDate.toISOString().slice(0, 10);
-        const month    = today.slice(0, 7);
+        await appendWaterBill(month, tenant, prev, m, rate, today, dueDateStr);
 
-        // บันทึกลง Sheets
-        await Promise.all([
-          appendWaterMainBill(month, mainUnits, mainAmount),
-          appendWaterBill(month, 'อารี',  prevAree,    areeMeter, rate, today, dueDateStr),
-          appendWaterBill(month, 'ไข่ดำ', prevKaidam,  m,         rate, today, dueDateStr),
-        ]);
-
-        // สร้างบิล 3 ชุด
-        const THAI_MONTHS_FULL = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+        const TH_M = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
         const [my, mm] = month.split('-');
-        const monthThai = THAI_MONTHS_FULL[parseInt(mm)] + ' ' + (parseInt(my) + 543);
-        const dueD = new Date(dueDateStr);
-        const dueThai = `${dueD.getDate()} ${THAI_MONTHS_FULL[dueD.getMonth()+1]} ${dueD.getFullYear()+543}`;
+        const monthThai = TH_M[parseInt(mm)] + ' ' + (parseInt(my) + 543);
+        const dueThai   = `${dueD.getDate()} ${TH_M[dueD.getMonth()+1]} ${dueD.getFullYear()+543}`;
 
-        const billAree = `━━━━━━━━━━━━━━━━━━━━\n💧 ใบแจ้งค่าน้ำประปา\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nผู้เช่า: อารี\n\n📊 การใช้น้ำ\nมิเตอร์ครั้งก่อน : ${prevAree}\nมิเตอร์ครั้งนี้  : ${areeMeter}\nหน่วยที่ใช้      : ${areeUnits} หน่วย\nราคาต่อหน่วย     : ฿${fmt(rate)}\n\n💰 ยอดชำระ: ฿${fmt(areeAmt)}\n\n📅 ชำระภายใน: ${dueThai}\n📍 ชำระที่: หมี่ (ห้องด้านหน้า)\n━━━━━━━━━━━━━━━━━━━━`;
-
-        const billKaidam = `━━━━━━━━━━━━━━━━━━━━\n💧 ใบแจ้งค่าน้ำประปา\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nผู้เช่า: ไข่ดำ\n\n📊 การใช้น้ำ\nมิเตอร์ครั้งก่อน : ${prevKaidam}\nมิเตอร์ครั้งนี้  : ${m}\nหน่วยที่ใช้      : ${kaidamUnits} หน่วย\nราคาต่อหน่วย     : ฿${fmt(rate)}\n\n💰 ยอดชำระ: ฿${fmt(kaidamAmt)}\n\n📅 ชำระภายใน: ${dueThai}\n📍 ชำระที่: หมี่ (ห้องด้านหน้า)\n━━━━━━━━━━━━━━━━━━━━`;
-
-        const billMee = `━━━━━━━━━━━━━━━━━━━━\n💧 สรุปค่าน้ำพ่วง\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nราคาต่อหน่วย: ฿${fmt(rate)}\n\nอารี  : ${areeUnits} หน่วย = ฿${fmt(areeAmt)}\nไข่ดำ : ${kaidamUnits} หน่วย = ฿${fmt(kaidamAmt)}\n\n💰 รวมที่จะได้รับ: ฿${fmt(totalPay)}\n📅 ภายใน: ${dueThai}\n━━━━━━━━━━━━━━━━━━━━`;
+        const bill = `━━━━━━━━━━━━━━━━━━━━\n💧 ใบแจ้งค่าน้ำประปา\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nผู้เช่า: ${tenant}\n\n📊 การใช้น้ำ\nมิเตอร์ครั้งก่อน : ${prev}\nมิเตอร์ครั้งนี้  : ${m}\nหน่วยที่ใช้      : ${units} หน่วย\nราคาต่อหน่วย     : ฿${fmt(rate)}\n\n💰 ยอดชำระ: ฿${fmt(amount)}\n\n📅 ชำระภายใน: ${dueThai}\n📍 ชำระที่: หมี่ (ห้องด้านหน้า)\n━━━━━━━━━━━━━━━━━━━━`;
 
         await reply(rt,
-          `✅ บันทึกแล้ว คัดลอกบิลส่งได้เลยครับ\n\n`
-          + `📋 บิลอารี (ส่ง Messenger):\n${billAree}\n\n`
-          + `📋 บิลไข่ดำ (ส่ง Messenger):\n${billKaidam}\n\n`
-          + `📋 สรุปหมี่ (ส่ง LINE):\n${billMee}`,
+          `✅ บันทึกน้ำ${tenant} แล้วครับ\n\n📋 บิล${tenant} (ส่ง Messenger):\n${bill}`,
           QR_WATER
         );
         continue;
