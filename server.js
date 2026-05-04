@@ -1297,6 +1297,18 @@ app.get('/init-sheets', async (req, res) => {
   } catch (e) { res.status(500).send('❌ ' + e.message); }
 });
 
+// ── Debug: ดูข้อมูลค่าเช่าทั้งหมดในชีต ─────────────────────────────────────────
+app.get('/debug-rent', async (req, res) => {
+  try {
+    const { getValues } = require('./sheets');
+    const rows = await getValues('รายรับ!A:F');
+    const rentRows = rows.slice(1).map((r, i) => ({
+      row: i + 2, date: r[0], room: r[1], type: r[2], amount: r[3], status: r[4]
+    })).filter(r => r.type === 'ค่าเช่า');
+    res.json(rentRows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Fix: แก้ค่าเช่าทุกห้องที่บันทึกผิด (ใช้ครั้งเดียว) ──────────────────────
 app.get('/fix-rent-all', async (req, res) => {
   try {
