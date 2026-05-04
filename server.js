@@ -112,8 +112,10 @@ function detectRoom(text) {
 }
 
 function detectAmount(text) {
-  const m = text.match(/(\d[\d,]*)/);
-  return m ? parseInt(m[1].replace(/,/g, '')) : null;
+  const all = text.match(/\d[\d,]*/g);
+  if (!all) return null;
+  const nums = all.map(s => parseInt(s.replace(/,/g, ''))).filter(n => n >= 100);
+  return nums.length > 0 ? nums[0] : null;
 }
 
 function detectDate(text) {
@@ -1293,6 +1295,36 @@ app.get('/init-sheets', async (req, res) => {
 
     res.json({ success: true, results });
   } catch (e) { res.status(500).send('❌ ' + e.message); }
+});
+
+// ── Fix: แก้ค่าเช่าทุกห้องที่บันทึกผิด (ใช้ครั้งเดียว) ──────────────────────
+app.get('/fix-rent-all', async (req, res) => {
+  try {
+    const { getValues, getToken } = require('./sheets');
+    const token = await getToken();
+    const SHEET_ID = '1IWF5gZ_w0EqbMu5uAHMF4w3I6PAgxbKb_aMeRQNDXgE';
+    const CORRECT = { 'ห้อง 1': 3500, 'ห้อง 2': 1000, 'ห้อง 3': 8000, 'คอนโด': 10000 };
+    const rows = await getValues('รายรับ!A:F');
+    const fixed = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const correct = CORRECT[r[1]];
+      if (!correct || r[2] !== 'ค่าเช่า') continue;
+      if (parseInt(r[3]) < 100) {
+        const rowNum = i + 1;
+        await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(`รายรับ!D${rowNum}`)}?valueInputOption=USER_ENTERED`,
+          {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ values: [[String(correct)]], majorDimension: 'ROWS' })
+          }
+        );
+        fixed.push({ row: rowNum, room: r[1], date: r[0], old: r[3], new: correct });
+      }
+    }
+    res.json({ fixed, count: fixed.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/', (req, res) => res.send('Rental LINE Bot ✅'));
