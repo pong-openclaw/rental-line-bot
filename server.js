@@ -1431,6 +1431,41 @@ app.get('/fix-rent-all', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── สร้างชีต ค่าใช้จ่าย_ยาง ใน rubber spreadsheet (เรียกครั้งเดียว) ────────────
+app.get('/create-expense-sheet', async (req, res) => {
+  try {
+    const { getToken } = require('./sheets');
+    const token = await getToken();
+    const RUBBER_ID = '12N5-WXFkoKg06K7F5rGA0bfjHJJZ06cIJ8oKy1WsmJ8';
+
+    // สร้างชีตใหม่
+    const addRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${RUBBER_ID}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'ค่าใช้จ่าย_ยาง' } } }] })
+      }
+    );
+    const addData = await addRes.json();
+    if (!addRes.ok && !addData.error?.message?.includes('already exists')) {
+      return res.status(500).json({ error: 'addSheet failed', addData });
+    }
+
+    // เขียน header
+    const hRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${RUBBER_ID}/values/${encodeURIComponent('ค่าใช้จ่าย_ยาง!A1')}?valueInputOption=RAW`,
+      {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [['วันที่', 'ประเภท', 'ยอดรวม', 'เจ้าของออก', 'ไทออก', 'หมายเหตุ']], majorDimension: 'ROWS' })
+      }
+    );
+    const hData = await hRes.json();
+    res.json({ ok: true, addSheet: addData.replies?.[0]?.addSheet || 'already_exists', header: hData });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/', (req, res) => res.send('Rental LINE Bot ✅'));
 app.get('/sa-email', (req, res) => {
   try {
