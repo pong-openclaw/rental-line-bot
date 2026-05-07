@@ -4,6 +4,7 @@ const {
   appendRent, appendWaterElec, getLastMeters, getRecentIncome, getAllIncome,
   getMonthlySummary, getLastWaterElecBill, getAllWaterElecBills, isWaterBillPaid,
   appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber,
+  appendRubberExpense, getRubberExpenseSummary, getRecentRubberExpenses,
   BANK_MEMBERS, BANK_MONTHLY,
   appendBankPayment, appendBankSent, getBankStatus, getBankHistory, getBankOverdue,
   WATER_TENANTS,
@@ -45,11 +46,14 @@ const QR_ROOMS = { items: [
   { type:'action', action:{ type:'message', label:'↩️ กลับ',        text:'รับเงิน' } },
 ]};
 const QR_RUBBER = { items: [
-  { type:'action', action:{ type:'message', label:'🌿 ขายยาง',     text:'ขายยาง' } },
-  { type:'action', action:{ type:'message', label:'👷 เบิกเงิน',   text:'เบิกเงิน' } },
-  { type:'action', action:{ type:'message', label:'💵 คืนเงิน',    text:'คืนเงิน' } },
-  { type:'action', action:{ type:'message', label:'💳 ยอดค้างไท',  text:'ยอดค้างไท' } },
-  { type:'action', action:{ type:'message', label:'📜 ประวัติยาง', text:'ประวัติยาง' } },
+  { type:'action', action:{ type:'message', label:'🌿 ขายยาง',      text:'ขายยาง' } },
+  { type:'action', action:{ type:'message', label:'🌱 ค่าปุ๋ย',      text:'ค่าปุ๋ย' } },
+  { type:'action', action:{ type:'message', label:'⛽ ค่าน้ำมัน',    text:'ค่าน้ำมัน' } },
+  { type:'action', action:{ type:'message', label:'👷 เบิกเงิน',     text:'เบิกเงิน' } },
+  { type:'action', action:{ type:'message', label:'💵 คืนเงิน',      text:'คืนเงิน' } },
+  { type:'action', action:{ type:'message', label:'💳 ยอดค้างไท',   text:'ยอดค้างไท' } },
+  { type:'action', action:{ type:'message', label:'📜 ประวัติยาง',  text:'ประวัติยาง' } },
+  { type:'action', action:{ type:'message', label:'📊 สรุปยาง',     text:'สรุปยาง' } },
 ]};
 const QR_GUIDED = { items: [
   { type:'action', action:{ type:'message', label:'❌ ยกเลิก', text:'ยกเลิก' } },
@@ -309,7 +313,7 @@ app.post('/webhook', async (req, res) => {
 
       // ── ตั้ง section ตามเมนูที่กด ────────────────────────────────────────────
       if (/^ห้องเช่า|รับเงิน|ค่าเช่า|ยอดค้าง|สรุป|ประวัติรายรับ|บันทึกมิเตอร์$/i.test(text)) SECTION.set(userId, 'rental');
-      else if (/^สวนยาง|ขายยาง|เบิกเงิน|คืนเงิน|ยอดค้างไท|ประวัติยาง|สรุปยาง$/i.test(text)) SECTION.set(userId, 'rubber');
+      else if (/^สวนยาง|ขายยาง|เบิกเงิน|คืนเงิน|ยอดค้างไท|ประวัติยาง|สรุปยาง|ค่าปุ๋ย|ค่าน้ำมัน$/i.test(text)) SECTION.set(userId, 'rubber');
       else if (/^หนี้บ้าน|รับเงินหนี้บ้าน|เลือกรับเงิน|ยอดค้างบ้าน|ส่งธนาคารแล้ว|ประวัติหนี้บ้าน$/i.test(text)) SECTION.set(userId, 'bank');
       else if (/^น้ำพ่วง|ออกบิลประปา|น้ำอารี|น้ำไข่ดำ|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ|บิลอารีล่าสุด|บิลไข่ดำล่าสุด$/i.test(text)) SECTION.set(userId, 'water');
       else if (/^ยอดค้างทั้งหมด|สรุปทั้งหมด$/i.test(text)) SECTION.set(userId, 'rental');
@@ -491,6 +495,54 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
+      // ── สวนยาง: ค่าปุ๋ย ─────────────────────────────────────────────────────
+      if (/^ค่าปุ๋ย$/i.test(text)) {
+        SESSION.set(userId, { step: 'rubber_fertilizer' });
+        await reply(rt, '🌱 ค่าปุ๋ย\n\n💰 ยอดรวมค่าปุ๋ย (฿)? เช่น 2000', QR_GUIDED);
+        continue;
+      }
+      if (sess?.step === 'rubber_fertilizer') {
+        const total = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(total) || total <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 2000', QR_GUIDED); continue; }
+        SESSION.delete(userId);
+        const half = +(total / 2).toFixed(2);
+        const date = new Date().toISOString().slice(0, 10);
+        await Promise.all([
+          appendRubberExpense(date, 'ค่าปุ๋ย', total, half, half, ''),
+          appendDebtRecord(date, 'ค่าปุ๋ย', half, 0, `ค่าปุ๋ยรวม ฿${fmt(total)}`),
+        ]);
+        const bal = await getWorkerBalance();
+        await reply(rt,
+          `✅ บันทึกค่าปุ๋ย ฿${fmt(total)} แล้วครับ\n\n`
+          + `🏠 เจ้าของออก: ฿${fmt(half)}\n`
+          + `👷 ไทออก: ฿${fmt(half)} (บันทึกเป็นหนี้)\n\n`
+          + `💳 ยอดค้างไท: ฿${fmt(bal)}`,
+          QR_RUBBER
+        );
+        continue;
+      }
+
+      // ── สวนยาง: ค่าน้ำมัน ───────────────────────────────────────────────────
+      if (/^ค่าน้ำมัน$/i.test(text)) {
+        SESSION.set(userId, { step: 'rubber_fuel' });
+        await reply(rt, '⛽ ค่าน้ำมัน\n\n💰 ยอดค่าน้ำมัน (฿)? เช่น 300', QR_GUIDED);
+        continue;
+      }
+      if (sess?.step === 'rubber_fuel') {
+        const total = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(total) || total <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 300', QR_GUIDED); continue; }
+        SESSION.delete(userId);
+        const date = new Date().toISOString().slice(0, 10);
+        await appendRubberExpense(date, 'ค่าน้ำมัน', total, total, 0, '');
+        await reply(rt,
+          `✅ บันทึกค่าน้ำมัน ฿${fmt(total)} แล้วครับ\n\n`
+          + `🏠 เจ้าของออก: ฿${fmt(total)}\n`
+          + `👷 ไทออก: ฿0`,
+          QR_RUBBER
+        );
+        continue;
+      }
+
       // ── สวนยาง: ยอดค้างไท ────────────────────────────────────────────────
       if (/^ยอดค้างไท$/i.test(text)) {
         const bal = await getWorkerBalance();
@@ -520,20 +572,28 @@ app.post('/webhook', async (req, res) => {
 
       // ── สวนยาง: สรุปยาง ──────────────────────────────────────────────────
       if (/^สรุปยาง$/i.test(text)) {
-        const [sum, bal] = await Promise.all([getRubberSummary(), getWorkerBalance()]);
+        const [sum, exp, bal] = await Promise.all([
+          getRubberSummary(), getRubberExpenseSummary(new Date().getFullYear().toString()), getWorkerBalance()
+        ]);
         const TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
         const recentLines = sum.recent.map(r => {
           const d = new Date(r.date);
           return `  • ${d.getDate()} ${TH_M[d.getMonth()]} ${d.getFullYear()+543}: ${r.net} กก. ฿${fmt(r.total)}`;
         }).join('\n');
+        const expLines = Object.entries(exp.byType)
+          .map(([type, v]) => `  ${type}: ฿${fmt(v.owner)}`)
+          .join('\n');
+        const netProfit = +(sum.ownerBaht - exp.totalOwner).toFixed(2);
         await reply(rt,
           `🌿 สรุปสวนยาง ปี ${sum.year}\n\n`
-          + `📦 ขาย ${sum.count} รอบ\n`
-          + `⚖️ น้ำยางสุทธิ ${sum.totalKgNet.toLocaleString('th-TH')} กก.\n`
-          + `💰 ยอดขายรวม ฿${fmt(sum.totalBaht)}\n`
-          + `🏠 เจ้าของได้รับ ฿${fmt(sum.ownerBaht)}\n`
+          + `📦 รายรับ\n`
+          + `  ขาย ${sum.count} รอบ — ${sum.totalKgNet.toLocaleString('th-TH')} กก.\n`
+          + `  ยอดขายรวม: ฿${fmt(sum.totalBaht)}\n`
+          + `  เจ้าของได้รับ (50%): ฿${fmt(sum.ownerBaht)}\n`
           + (recentLines ? `\n📅 รอบล่าสุด:\n${recentLines}\n` : '')
-          + `\n💳 ยอดค้างไท: ฿${fmt(bal)}`,
+          + (expLines ? `\n💸 ต้นทุนเจ้าของ\n${expLines}\n  รวม: ฿${fmt(exp.totalOwner)}\n` : '\n💸 ต้นทุนเจ้าของ: ยังไม่มี\n')
+          + `\n💰 กำไรสุทธิ: ฿${fmt(netProfit)}\n`
+          + `\n👷 ยอดค้างไท: ฿${fmt(bal)}`,
           QR_RUBBER
         );
         continue;
@@ -1284,6 +1344,10 @@ app.get('/init-sheets', async (req, res) => {
       { range: 'น้ำ_รับเงิน!A1',    values: ['วันที่', 'ผู้เช่า', 'เดือน', 'ยอด', 'หมายเหตุ'] },
       { range: 'น้ำ_บิลหลัก!A1',    values: ['วันที่', 'เดือน', 'หน่วยรวม', 'ยอดรวม', 'สถานะ', 'วันจ่ายหมี่'] },
     ];
+    // ค่าใช้จ่าย_ยาง อยู่ใน Rubber Spreadsheet แยก
+    const rubberTabs = [
+      { range: 'ค่าใช้จ่าย_ยาง!A1', values: ['วันที่', 'ประเภท', 'ยอดรวม', 'เจ้าของออก', 'ไทออก', 'หมายเหตุ'] },
+    ];
 
     // ใช้ Sheets API เขียนตรงไปที่ A1 (ไม่ใช้ append)
     const crypto = require('crypto');
@@ -1302,6 +1366,18 @@ app.get('/init-sheets', async (req, res) => {
     for (const tab of tabs) {
       const r = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(tab.range)}?valueInputOption=RAW`,
+        { method: 'PUT', headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: [tab.values], majorDimension: 'ROWS' }) }
+      );
+      const d = await r.json();
+      results.push({ tab: tab.range, ok: r.ok, updatedCells: d.updatedCells });
+    }
+
+    // ค่าใช้จ่าย_ยาง — Rubber Spreadsheet
+    const RUBBER_ID = '12N5-WXFkoKg06K7F5rGA0bfjHJJZ06cIJ8oKy1WsmJ8';
+    for (const tab of rubberTabs) {
+      const r = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${RUBBER_ID}/values/${encodeURIComponent(tab.range)}?valueInputOption=RAW`,
         { method: 'PUT', headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ values: [tab.values], majorDimension: 'ROWS' }) }
       );

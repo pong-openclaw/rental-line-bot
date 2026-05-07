@@ -159,6 +159,38 @@ async function getRecentRubber(n = 5) {
   return data.slice(-n).reverse();
 }
 
+// ค่าใช้จ่าย_ยาง!A:F → วันที่ | ประเภท | ยอดรวม | เจ้าของออก | ไทออก | หมายเหตุ
+async function appendRubberExpense(date, type, total, ownerAmt, workerAmt, note = '') {
+  return appendToSheet('ค่าใช้จ่าย_ยาง!A:F', [date, type, total, ownerAmt, workerAmt, note], RUBBER_SPREADSHEET_ID);
+}
+
+async function getRubberExpenseSummary(year) {
+  const rows = await getValues('ค่าใช้จ่าย_ยาง!A:F', RUBBER_SPREADSHEET_ID);
+  const data = rows.filter(r => r[0] && r[0] !== 'วันที่' && String(r[0]).startsWith(year));
+  const byType = {};
+  let totalOwner = 0, totalWorker = 0;
+  for (const r of data) {
+    const type     = r[1] || 'อื่นๆ';
+    const ownerAmt  = parseFloat(r[3]) || 0;
+    const workerAmt = parseFloat(r[4]) || 0;
+    if (!byType[type]) byType[type] = { owner: 0, worker: 0 };
+    byType[type].owner  += ownerAmt;
+    byType[type].worker += workerAmt;
+    totalOwner  += ownerAmt;
+    totalWorker += workerAmt;
+  }
+  return { byType, totalOwner, totalWorker };
+}
+
+async function getRecentRubberExpenses(n = 5) {
+  const rows = await getValues('ค่าใช้จ่าย_ยาง!A:F', RUBBER_SPREADSHEET_ID);
+  const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
+  return data.slice(-n).reverse().map(r => ({
+    date: r[0], type: r[1], total: parseFloat(r[2]) || 0,
+    ownerAmt: parseFloat(r[3]) || 0, workerAmt: parseFloat(r[4]) || 0, note: r[5] || ''
+  }));
+}
+
 // ── หนี้ธนาคาร ธอส. ──────────────────────────────────────────────────────────
 // หนี้_รับเงิน!A:E  → วันที่ | เดือน | ชื่อ | ยอดรับ | หมายเหตุ
 // หนี้_ส่งธนาคาร!A:D → วันที่ | เดือน | ยอด  | หมายเหตุ
@@ -349,6 +381,7 @@ module.exports = {
   getMonthlySummary, getLastWaterElecBill, getAllWaterElecBills, isWaterBillPaid,
   // สวนยาง
   appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber,
+  appendRubberExpense, getRubberExpenseSummary, getRecentRubberExpenses,
   // หนี้ธนาคาร
   BANK_MEMBERS, BANK_MONTHLY,
   appendBankPayment, appendBankSent, getBankStatus, getBankHistory, getBankOverdue,
