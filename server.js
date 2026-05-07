@@ -96,6 +96,24 @@ async function reply(replyToken, text, qr = QR_RENTAL) {
   else console.log('✅ Reply sent');
 }
 
+// ส่งหลายข้อความในครั้งเดียว (สูงสุด 5) — ข้อความสุดท้ายแนบ quickReply
+async function replyMulti(replyToken, texts, qr = QR_RENTAL) {
+  const messages = texts.map((text, i) => {
+    const msg = { type: 'text', text };
+    if (i === texts.length - 1) msg.quickReply = qr;
+    return msg;
+  });
+  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ replyToken, messages })
+  });
+  const data = await res.json();
+  _lastReply = { status: res.status, ok: res.ok, data, time: new Date().toISOString() };
+  if (!res.ok) console.log('❌ ReplyMulti error:', JSON.stringify(data));
+  else console.log('✅ ReplyMulti sent');
+}
+
 // ── ค่าน้ำพ่วง: อัตราค่าน้ำต่อหน่วย ─────────────────────────────────────────
 const WATER_RATE = 25; // บาท/หน่วย
 
@@ -942,13 +960,7 @@ app.post('/webhook', async (req, res) => {
         const billKaidam = `━━━━━━━━━━━━━━━━━━━━\n💧 ใบแจ้งค่าน้ำประปา\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nผู้เช่า: ไข่ดำ\n\n📊 การใช้น้ำ\nมิเตอร์ครั้งก่อน : ${prevKaidam}\nมิเตอร์ครั้งนี้  : ${m}\nหน่วยที่ใช้      : ${kaidamUnits} หน่วย\nราคาต่อหน่วย     : ฿${WATER_RATE}\n\n💰 ยอดชำระ: ฿${fmt(kaidamAmt)}\n\n📅 ชำระภายใน: ${dueThai}\n📍 ชำระที่: หมี่ (ห้องด้านหน้า)\n━━━━━━━━━━━━━━━━━━━━`;
         const billMee    = `━━━━━━━━━━━━━━━━━━━━\n💧 สรุปค่าน้ำพ่วง\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nราคาต่อหน่วย: ฿${WATER_RATE}\n\nอารี  : ${areeUnits} หน่วย = ฿${fmt(areeAmt)}\nไข่ดำ : ${kaidamUnits} หน่วย = ฿${fmt(kaidamAmt)}\n\n💰 รวมที่จะได้รับ: ฿${fmt(totalAmt)}\n📅 ภายใน: ${dueThai}\n━━━━━━━━━━━━━━━━━━━━`;
 
-        await reply(rt,
-          `✅ ออกบิลเรียบร้อยครับ\n\n`
-          + `📋 บิลอารี (ส่ง Messenger):\n${billAree}\n\n`
-          + `📋 บิลไข่ดำ (ส่ง Messenger):\n${billKaidam}\n\n`
-          + `📋 สรุปหมี่ (ส่ง LINE):\n${billMee}`,
-          QR_WATER
-        );
+        await replyMulti(rt, [billAree, billKaidam, billMee], QR_WATER);
         continue;
       }
 
