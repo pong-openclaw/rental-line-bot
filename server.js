@@ -61,13 +61,15 @@ const QR_BANK = { items: [
   { type:'action', action:{ type:'message', label:'📜 ประวัติ',     text:'ประวัติหนี้บ้าน' } },
 ]};
 const QR_WATER = { items: [
-  { type:'action', action:{ type:'message', label:'📋 ออกบิลประปา',  text:'ออกบิลประปา' } },
-  { type:'action', action:{ type:'message', label:'💧 น้ำอารี',       text:'น้ำอารี' } },
-  { type:'action', action:{ type:'message', label:'💧 น้ำไข่ดำ',      text:'น้ำไข่ดำ' } },
-  { type:'action', action:{ type:'message', label:'⏰ ยอดค้าง',       text:'ยอดค้างน้ำ' } },
-  { type:'action', action:{ type:'message', label:'💰 จ่ายหมี่แล้ว',  text:'จ่ายหมี่แล้ว' } },
-  { type:'action', action:{ type:'message', label:'📜 ประวัติอารี',   text:'ประวัติน้ำอารี' } },
-  { type:'action', action:{ type:'message', label:'📜 ประวัติไข่ดำ',  text:'ประวัติน้ำไข่ดำ' } },
+  { type:'action', action:{ type:'message', label:'📋 ออกบิลประปา',   text:'ออกบิลประปา' } },
+  { type:'action', action:{ type:'message', label:'💧 น้ำอารี',        text:'น้ำอารี' } },
+  { type:'action', action:{ type:'message', label:'💧 น้ำไข่ดำ',       text:'น้ำไข่ดำ' } },
+  { type:'action', action:{ type:'message', label:'🧾 บิลอารีล่าสุด',  text:'บิลอารีล่าสุด' } },
+  { type:'action', action:{ type:'message', label:'🧾 บิลไข่ดำล่าสุด', text:'บิลไข่ดำล่าสุด' } },
+  { type:'action', action:{ type:'message', label:'⏰ ยอดค้าง',        text:'ยอดค้างน้ำ' } },
+  { type:'action', action:{ type:'message', label:'💰 จ่ายหมี่แล้ว',   text:'จ่ายหมี่แล้ว' } },
+  { type:'action', action:{ type:'message', label:'📜 ประวัติอารี',    text:'ประวัติน้ำอารี' } },
+  { type:'action', action:{ type:'message', label:'📜 ประวัติไข่ดำ',   text:'ประวัติน้ำไข่ดำ' } },
 ]};
 
 // เก็บ userId เจ้าของเพื่อส่ง push notification
@@ -309,7 +311,7 @@ app.post('/webhook', async (req, res) => {
       if (/^ห้องเช่า|รับเงิน|ค่าเช่า|ยอดค้าง|สรุป|ประวัติรายรับ|บันทึกมิเตอร์$/i.test(text)) SECTION.set(userId, 'rental');
       else if (/^สวนยาง|ขายยาง|เบิกเงิน|คืนเงิน|ยอดค้างไท|ประวัติยาง|สรุปยาง$/i.test(text)) SECTION.set(userId, 'rubber');
       else if (/^หนี้บ้าน|รับเงินหนี้บ้าน|เลือกรับเงิน|ยอดค้างบ้าน|ส่งธนาคารแล้ว|ประวัติหนี้บ้าน$/i.test(text)) SECTION.set(userId, 'bank');
-      else if (/^น้ำพ่วง|ออกบิลประปา|น้ำอารี|น้ำไข่ดำ|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ$/i.test(text)) SECTION.set(userId, 'water');
+      else if (/^น้ำพ่วง|ออกบิลประปา|น้ำอารี|น้ำไข่ดำ|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ|บิลอารีล่าสุด|บิลไข่ดำล่าสุด$/i.test(text)) SECTION.set(userId, 'water');
       else if (/^ยอดค้างทั้งหมด|สรุปทั้งหมด$/i.test(text)) SECTION.set(userId, 'rental');
 
       // ── Rich Menu: ห้องเช่า ──────────────────────────────────────────────
@@ -1071,6 +1073,22 @@ app.post('/webhook', async (req, res) => {
           `📅 ${h.month}\n  มิเตอร์: ${h.meterOld}→${h.meterNew} (${h.units} หน่วย)\n  ฿${fmt(h.amount)} ${h.paid ? '✅ จ่ายแล้ว' : '❌ ค้าง'}`
         );
         await reply(rt, `📜 ประวัติค่าน้ำ${tenant}\n\n` + lines.join('\n\n'), QR_WATER);
+        continue;
+      }
+
+      // ── บิลล่าสุด อารี / ไข่ดำ ────────────────────────────────────────────
+      if (/^บิล(อารี|ไข่ดำ)ล่าสุด$/i.test(text)) {
+        const tenant  = text.match(/^บิล(อารี|ไข่ดำ)ล่าสุด$/i)[1];
+        const history = await getWaterHistory(tenant, 1);
+        if (history.length === 0) { await reply(rt, `❌ ยังไม่มีบิล${tenant}ครับ`, QR_WATER); continue; }
+        const h = history[0];
+        const TH_M = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+        const [my, mm] = h.month.split('-');
+        const monthThai = TH_M[parseInt(mm)] + ' ' + (parseInt(my) + 543);
+        const dueD      = new Date(h.dueDate);
+        const dueThai   = h.dueDate ? `${dueD.getDate()} ${TH_M[dueD.getMonth()+1]} ${dueD.getFullYear()+543}` : '-';
+        const bill = `━━━━━━━━━━━━━━━━━━━━\n💧 ใบแจ้งค่าน้ำประปา\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nผู้เช่า: ${tenant}\n\n📊 การใช้น้ำ\nมิเตอร์ครั้งก่อน : ${h.meterOld}\nมิเตอร์ครั้งนี้  : ${h.meterNew}\nหน่วยที่ใช้      : ${h.units} หน่วย\nราคาต่อหน่วย     : ฿${h.rate}\n\n💰 ยอดชำระ: ฿${fmt(h.amount)}\n${h.paid ? '✅ ชำระแล้ว' : `📅 ชำระภายใน: ${dueThai}`}\n📍 ชำระที่: หมี่ (ห้องด้านหน้า)\n━━━━━━━━━━━━━━━━━━━━`;
+        await reply(rt, bill, QR_WATER);
         continue;
       }
 
