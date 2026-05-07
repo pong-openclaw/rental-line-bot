@@ -374,17 +374,7 @@ app.post('/webhook', async (req, res) => {
 
       // ── Rich Menu: สวนยาง ─────────────────────────────────────────────────
       if (/^สวนยาง$/i.test(text)) {
-        const qr = { items: [
-          { type:'action', action:{ type:'message', label:'🌿 ขายยาง',    text:'ขายยาง' } },
-          { type:'action', action:{ type:'message', label:'👷 ไท เบิกเงิน', text:'เบิกเงิน' } },
-          { type:'action', action:{ type:'message', label:'💵 ไท คืนเงิน',  text:'คืนเงิน' } },
-          { type:'action', action:{ type:'message', label:'📋 ยอดค้างไท',  text:'ยอดค้างไท' } },
-          { type:'action', action:{ type:'message', label:'📜 ประวัติยาง',  text:'ประวัติยาง' } },
-        ]};
-        await fetch('https://api.line.me/v2/bot/message/reply', {
-          method:'POST', headers:{ Authorization:`Bearer ${TOKEN}`, 'Content-Type':'application/json' },
-          body: JSON.stringify({ replyToken: rt, messages: [{ type:'text', text:'🌿 สวนยาง — เลือกได้เลยครับ', quickReply: qr }] })
-        });
+        await reply(rt, '🌿 สวนยาง — เลือกได้เลยครับ', QR_RUBBER);
         continue;
       }
 
