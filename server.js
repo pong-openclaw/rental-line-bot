@@ -1422,6 +1422,43 @@ app.get('/fix-rent-all', async (req, res) => {
 });
 
 // ── สร้างชีต ค่าใช้จ่าย_ยาง ใน rubber spreadsheet (เรียกครั้งเดียว) ────────────
+// ── Debug: ดูข้อมูลทุกส่วน ────────────────────────────────────────────────────
+app.get('/debug-all', async (req, res) => {
+  try {
+    const [payRows, sentRows, rentRows, wBillRows, wPayRows, wMainRows] = await Promise.all([
+      require('./sheets').getValues('หนี้_รับเงิน!A:E'),
+      require('./sheets').getValues('หนี้_ส่งธนาคาร!A:D'),
+      require('./sheets').getValues('รายรับ!A:F'),
+      require('./sheets').getValues('น้ำ_พ่วง!A:I'),
+      require('./sheets').getValues('น้ำ_รับเงิน!A:E'),
+      require('./sheets').getValues('น้ำ_บิลหลัก!A:F'),
+    ]);
+    const currentMonth = new Date().toISOString().slice(0,7);
+    const elapsed = (function(){
+      const [sy,sm] = '2026-04'.split('-').map(Number);
+      const [ey,em] = currentMonth.split('-').map(Number);
+      return Math.max(0,(ey-sy)*12+(em-sm)+1);
+    })();
+    // Bank summary
+    const payments = payRows.filter(r=>r[0]&&r[0]!=='วันที่');
+    const bankSummary = BANK_MEMBERS.map(name => {
+      const allPaid  = payments.filter(r=>r[2]===name).reduce((s,r)=>s+(parseFloat(r[3])||0),0);
+      const thisPaid = payments.filter(r=>r[2]===name&&r[1]===currentMonth).reduce((s,r)=>s+(parseFloat(r[3])||0),0);
+      return { name, allPaid, thisPaid, totalOwed: elapsed*BANK_MONTHLY, balance: elapsed*BANK_MONTHLY - allPaid };
+    });
+    res.json({
+      currentMonth, elapsed, BANK_START: '2026-04', BANK_MONTHLY,
+      bankPaymentRows: payments.map(r=>({date:r[0],month:r[1],name:r[2],amount:r[3]})),
+      bankSentRows: sentRows.filter(r=>r[0]&&r[0]!=='วันที่').map(r=>({date:r[0],month:r[1],amount:r[2]})),
+      bankSummary,
+      rentRows: rentRows.filter(r=>r[0]&&r[0]!=='วันที่').slice(-10).map(r=>({date:r[0],room:r[1],type:r[2],amount:r[3]})),
+      waterBills: wBillRows.filter(r=>r[0]&&r[0]!=='เดือน').map(r=>({month:r[0],tenant:r[1],old:r[2],new:r[3],units:r[4],rate:r[5],amount:r[6],due:r[8]})),
+      waterPayments: wPayRows.filter(r=>r[0]&&r[0]!=='วันที่').map(r=>({date:r[0],tenant:r[1],month:r[2],amount:r[3]})),
+      waterMainBills: wMainRows.filter(r=>r[0]&&r[0]!=='วันที่').map(r=>({date:r[0],month:r[1],units:r[2],amount:r[3],status:r[4]})),
+    });
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
 app.get('/create-expense-sheet', async (req, res) => {
   try {
     const { getToken } = require('./sheets');
