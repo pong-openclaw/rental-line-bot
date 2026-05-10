@@ -649,16 +649,25 @@ app.post('/webhook', async (req, res) => {
             }).join('\n')
           : '  ยังไม่มีข้อมูล';
 
-        // 🏦 หนี้บ้าน
+        // 🏦 หนี้บ้าน — ใช้ logic เดียวกับ handler หนี้บ้าน (ดูเดือนนี้)
         const bankLines = BANK_MEMBERS.map(n => {
-          const b = bankStatus.members[n].balance;
-          return b <= 0 ? `✅ ${n}` : `❌ ${n}`;
+          const m = bankStatus.members[n];
+          if (m.thisPaid >= BANK_MONTHLY) return `✅ ${n}`;
+          if (m.thisPaid > 0)             return `⚠️ ${n}`;
+          return `❌ ${n}`;
         }).join(' | ');
         const bankSentLine = bankStatus.bankSent ? `  ✅ ส่งธนาคารแล้ว` : `  ⏳ ยังไม่ส่งธนาคาร`;
+        // แสดงยอดค้างสะสม (ถ้ามี)
+        const arrearEntries = BANK_MEMBERS
+          .filter(n => bankStatus.members[n].balance > 0)
+          .map(n => `${n} ฿${fmt(bankStatus.members[n].balance)}`);
+        const arrearLine = arrearEntries.length > 0 ? `\n  ⚠️ ค้างสะสม: ${arrearEntries.join(', ')}` : '';
 
-        // 💧 ค่าน้ำพ่วง
+        // 💧 ค่าน้ำพ่วง — แยก "ยังไม่ออกบิล" ออกจาก "ออกบิลแล้วแต่ยังไม่จ่าย"
         const waterLines = WATER_TENANTS.map(t => {
-          const b = wStatus.tenants[t]?.balance || 0;
+          const info = wStatus.tenants[t];
+          if (!info || info.billed === 0) return `  ❓ ${t} — ยังไม่ออกบิล`;
+          const b = info.balance || 0;
           return b <= 0 ? `  ✅ ${t} — จ่ายแล้ว` : `  ❌ ${t} — ค้าง ฿${fmt(b)}`;
         }).join('\n');
         const mainLine = wStatus.lastMain
@@ -679,7 +688,7 @@ app.post('/webhook', async (req, res) => {
           + `  💰 รวม ฿${sum.total.toLocaleString('th-TH')}\n`
           + `\n🌿 สวนยาง (${rubberRows.length} รอบล่าสุด)\n${rubLines}\n`
           + `  💳 ยอดค้างไท: ฿${fmt(rubBal)}\n`
-          + `\n🏦 หนี้บ้าน\n  ${bankLines}\n${bankSentLine}\n`
+          + `\n🏦 หนี้บ้าน\n  ${bankLines}\n${bankSentLine}${arrearLine}\n`
           + `\n💧 ค่าน้ำพ่วง\n${waterLines}\n${mainLine}`
         );
         continue;
@@ -1457,6 +1466,25 @@ app.get('/debug-all', async (req, res) => {
       waterMainBills: wMainRows.filter(r=>r[0]&&r[0]!=='วันที่').map(r=>({date:r[0],month:r[1],units:r[2],amount:r[3],status:r[4]})),
     });
   } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// ── Fix: เพิ่มบันทึกหนี้บ้านเม.ย.ของพี่หมา (ถ้าไม่มี) ──────────────────────────
+app.get('/fix-hma-april', async (req, res) => {
+  try {
+    const { getValues, getToken } = require('./sheets');
+    const SHEET_ID = '1IWF5gZ_w0EqbMu5uAHMF4w3I6PAgxbKb_aMeRQNDXgE';
+    const rows = await getValues('หนี้_รับเงิน!A:E');
+    const already = rows.some(r => r[2] === 'พี่หมา' && r[1] === '2026-04');
+    if (already) return res.json({ ok: true, msg: 'พี่หมา เดือน 2026-04 มีข้อมูลอยู่แล้ว ไม่ต้องเพิ่ม' });
+    const token = await getToken();
+    const r = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent('หนี้_รับเงิน!A:E')}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+      { method:'POST', headers:{'Authorization':`Bearer ${token}`,'Content-Type':'application/json'},
+        body: JSON.stringify({ values: [['2026-04-28','2026-04','พี่หมา',3575,'บันทึกย้อนหลัง เม.ย. 2569']], majorDimension:'ROWS' }) }
+    );
+    const d = await r.json();
+    res.json({ ok: r.ok, result: d });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/create-expense-sheet', async (req, res) => {
