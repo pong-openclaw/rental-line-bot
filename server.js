@@ -9,7 +9,7 @@ const {
   appendBankPayment, appendBankSent, getBankStatus, getBankHistory, getBankOverdue,
   WATER_TENANTS,
   getLastWaterSubMeter, appendWaterBill, appendWaterMainBill,
-  appendWaterPayment, appendWaterMainPaid, getWaterStatus, getWaterHistory, getWaterOverdue,
+  appendWaterPayment, appendWaterMainPaid, syncWaterMainBill, getWaterStatus, getWaterHistory, getWaterOverdue,
 } = require('./sheets');
 
 const app  = express();
@@ -1055,6 +1055,8 @@ app.post('/webhook', async (req, res) => {
         const dueDateStr = dueD.toISOString().slice(0, 10);
 
         await appendWaterBill(month, tenant, prev, m, rate, today, dueDateStr);
+        // sync main bill อัตโนมัติ (ถ้าเดือนนี้ยังไม่มีบิลหลัก)
+        syncWaterMainBill(month).catch(e => console.error('syncWaterMainBill error:', e.message));
 
         const TH_M = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
         const [my, mm] = month.split('-');
