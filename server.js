@@ -65,15 +65,17 @@ const QR_BANK = { items: [
   { type:'action', action:{ type:'message', label:'📜 ประวัติ',     text:'ประวัติหนี้บ้าน' } },
 ]};
 const QR_WATER = { items: [
-  { type:'action', action:{ type:'message', label:'📋 ออกบิลประปา',   text:'ออกบิลประปา' } },
-  { type:'action', action:{ type:'message', label:'💧 น้ำอารี',        text:'น้ำอารี' } },
-  { type:'action', action:{ type:'message', label:'💧 น้ำไข่ดำ',       text:'น้ำไข่ดำ' } },
-  { type:'action', action:{ type:'message', label:'🧾 บิลอารีล่าสุด',  text:'บิลอารีล่าสุด' } },
-  { type:'action', action:{ type:'message', label:'🧾 บิลไข่ดำล่าสุด', text:'บิลไข่ดำล่าสุด' } },
-  { type:'action', action:{ type:'message', label:'⏰ ยอดค้าง',        text:'ยอดค้างน้ำ' } },
-  { type:'action', action:{ type:'message', label:'💰 จ่ายหมี่แล้ว',   text:'จ่ายหมี่แล้ว' } },
-  { type:'action', action:{ type:'message', label:'📜 ประวัติอารี',    text:'ประวัติน้ำอารี' } },
-  { type:'action', action:{ type:'message', label:'📜 ประวัติไข่ดำ',   text:'ประวัติน้ำไข่ดำ' } },
+  { type:'action', action:{ type:'message', label:'📋 ออกบิลประปา',    text:'ออกบิลประปา' } },
+  { type:'action', action:{ type:'message', label:'💧 มิเตอร์อารี',     text:'น้ำอารี' } },
+  { type:'action', action:{ type:'message', label:'💧 มิเตอร์ไข่ดำ',    text:'น้ำไข่ดำ' } },
+  { type:'action', action:{ type:'message', label:'💵 รับเงินอารี',      text:'รับเงินน้ำอารี' } },
+  { type:'action', action:{ type:'message', label:'💵 รับเงินไข่ดำ',     text:'รับเงินน้ำไข่ดำ' } },
+  { type:'action', action:{ type:'message', label:'🧾 บิลอารีล่าสุด',   text:'บิลอารีล่าสุด' } },
+  { type:'action', action:{ type:'message', label:'🧾 บิลไข่ดำล่าสุด',  text:'บิลไข่ดำล่าสุด' } },
+  { type:'action', action:{ type:'message', label:'⏰ ยอดค้าง',         text:'ยอดค้างน้ำ' } },
+  { type:'action', action:{ type:'message', label:'💰 จ่ายหมี่แล้ว',    text:'จ่ายหมี่แล้ว' } },
+  { type:'action', action:{ type:'message', label:'📜 ประวัติอารี',     text:'ประวัติน้ำอารี' } },
+  { type:'action', action:{ type:'message', label:'📜 ประวัติไข่ดำ',    text:'ประวัติน้ำไข่ดำ' } },
 ]};
 
 // เก็บ userId เจ้าของเพื่อส่ง push notification
@@ -315,7 +317,7 @@ app.post('/webhook', async (req, res) => {
       if (/^ห้องเช่า|รับเงิน|ค่าเช่า|ยอดค้าง|สรุป|ประวัติรายรับ|บันทึกมิเตอร์$/i.test(text)) SECTION.set(userId, 'rental');
       else if (/^สวนยาง|ขายยาง|เบิกเงิน|คืนเงิน|ยอดค้างไท|ประวัติยาง|สรุปยาง|ค่าปุ๋ย|ค่าน้ำมัน$/i.test(text)) SECTION.set(userId, 'rubber');
       else if (/^หนี้บ้าน|รับเงินหนี้บ้าน|เลือกรับเงิน|ยอดค้างบ้าน|ส่งธนาคารแล้ว|ประวัติหนี้บ้าน$/i.test(text)) SECTION.set(userId, 'bank');
-      else if (/^น้ำพ่วง|ออกบิลประปา|น้ำอารี|น้ำไข่ดำ|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ|บิลอารีล่าสุด|บิลไข่ดำล่าสุด$/i.test(text)) SECTION.set(userId, 'water');
+      else if (/^น้ำพ่วง|ออกบิลประปา|น้ำอารี|น้ำไข่ดำ|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ|บิลอารีล่าสุด|บิลไข่ดำล่าสุด|รับเงินน้ำอารี|รับเงินน้ำไข่ดำ$/i.test(text)) SECTION.set(userId, 'water');
       else if (/^ยอดค้างทั้งหมด|สรุปทั้งหมด$/i.test(text)) SECTION.set(userId, 'rental');
 
       // ── Rich Menu: ห้องเช่า ──────────────────────────────────────────────
@@ -1072,7 +1074,43 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
-      // รับเงินน้ำ: "รับเงินน้ำอารี 164"
+      // รับเงินน้ำ: กดปุ่ม "รับเงินน้ำอารี/ไข่ดำ" (ไม่มีจำนวน) → guided
+      {
+        const mBtn = text.match(/^รับเงินน้ำ(อารี|ไข่ดำ)$/i);
+        if (mBtn) {
+          const tenant = mBtn[1];
+          const wStatus = await getWaterStatus();
+          const balance = wStatus.tenants[tenant]?.balance || 0;
+          if (balance <= 0) {
+            await reply(rt, `✅ ${tenant} ไม่มียอดค้างแล้วครับ`, QR_WATER); continue;
+          }
+          SESSION.set(userId, { step: 'water_receive', tenant });
+          const qr = { items: [
+            { type:'action', action:{ type:'message', label:`✅ รับครบ ฿${fmt(balance)}`, text: String(Math.round(balance)) } },
+            { type:'action', action:{ type:'message', label:'❌ ยกเลิก', text:'ยกเลิก' } },
+          ]};
+          await reply(rt, `💵 รับเงินน้ำ${tenant}\n💳 ยอดค้าง: ฿${fmt(balance)}\n\nรับเท่าไหร่ครับ?`, qr);
+          continue;
+        }
+      }
+      // guided: รอจำนวนรับเงินน้ำ
+      if (sess?.step === 'water_receive') {
+        const amt = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ', QR_GUIDED); continue; }
+        SESSION.delete(userId);
+        const { tenant } = sess;
+        const month = new Date().toISOString().slice(0, 7);
+        await appendWaterPayment(tenant, month, amt);
+        const wStatus = await getWaterStatus();
+        const balance = wStatus.tenants[tenant]?.balance || 0;
+        await reply(rt,
+          `✅ รับเงินน้ำ${tenant} ฿${fmt(amt)} แล้วครับ\n`
+          + (balance <= 0 ? `🎉 ${tenant} ไม่มียอดค้างแล้ว` : `💳 ${tenant} ยังค้างอยู่: ฿${fmt(balance)}`),
+          QR_WATER
+        );
+        continue;
+      }
+      // รับเงินน้ำ: พิมพ์ตรง "รับเงินน้ำอารี 164"
       {
         const mWater = text.match(/^รับเงินน้ำ(อารี|ไข่ดำ)\s+(\d[\d,]*)/i);
         if (mWater) {
