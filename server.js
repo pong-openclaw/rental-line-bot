@@ -670,10 +670,13 @@ app.post('/webhook', async (req, res) => {
           const info = wStatus.tenants[t];
           if (!info || info.billed === 0) return `  ❓ ${t} — ยังไม่ออกบิล`;
           const b = info.balance || 0;
-          return b <= 0 ? `  ✅ ${t} — จ่ายแล้ว` : `  ❌ ${t} — ค้าง ฿${fmt(b)}`;
+          if (b > 0) return `  ❌ ${t} — ค้าง ฿${fmt(b)}`;
+          return info.billedThisMonth ? `  ✅ ${t} — จ่ายแล้ว` : `  ❓ ${t} — ยังไม่ออกบิลเดือนนี้`;
         }).join('\n');
         const mainLine = wStatus.lastMain
-          ? (wStatus.lastMain.paid ? `  ✅ จ่ายหมี่แล้ว` : `  ⏳ ยังไม่จ่ายหมี่ (฿${fmt(wStatus.lastMain.totalAmount)})`)
+          ? (wStatus.lastMain.paid
+              ? (wStatus.lastMain.isCurrentMonth ? `  ✅ จ่ายหมี่แล้ว` : `  📋 ยังไม่มีบิลเดือนนี้`)
+              : `  ⏳ ยังไม่จ่ายหมี่ (฿${fmt(wStatus.lastMain.totalAmount)})`)
           : `  📋 ยังไม่มีบิล`;
 
         const weLine = weBill

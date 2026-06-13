@@ -315,13 +315,16 @@ async function getWaterStatus() {
   const payments = payRows.filter(r => r[0] && r[0] !== 'วันที่');
   const mains    = mainRows.filter(r => r[0] && r[0] !== 'วันที่' && !String(r[1]).includes('_paid'));
 
+  const currentMonth = new Date().toISOString().slice(0, 7);
+
   const tenants = {};
   for (const tenant of WATER_TENANTS) {
     const billed   = bills.filter(r => r[1] === tenant).reduce((s, r) => s + (parseFloat(r[6]) || 0), 0);
     const paid     = payments.filter(r => r[1] === tenant).reduce((s, r) => s + (parseFloat(r[3]) || 0), 0);
     const balance  = +(billed - paid).toFixed(2);
     const lastBill = bills.filter(r => r[1] === tenant).slice(-1)[0] || null;
-    tenants[tenant] = { billed, paid, balance, lastBill };
+    const billedThisMonth = !!lastBill && lastBill[0] === currentMonth;
+    tenants[tenant] = { billed, paid, balance, lastBill, billedThisMonth };
   }
 
   // สถานะบิลหลัก (จ่ายหมี่แล้วไหม)
@@ -336,7 +339,8 @@ async function getWaterStatus() {
       totalUnits:  parseFloat(lastMain[2]) || 0,
       totalAmount: parseFloat(lastMain[3]) || 0,
       rate:        +((parseFloat(lastMain[3]) || 0) / Math.max(parseFloat(lastMain[2]) || 1, 1)).toFixed(4),
-      paid:        mainPaid
+      paid:        mainPaid,
+      isCurrentMonth: lastMain[1] === currentMonth
     } : null
   };
 }
