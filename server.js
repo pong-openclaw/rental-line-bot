@@ -609,11 +609,14 @@ app.post('/webhook', async (req, res) => {
         let waterLine = '';
         if (bill) {
           const waterPaid = await isWaterBillPaid(bill.month);
-          if (waterPaid) {
-            waterLine = `✅ น้ำ/ไฟ (${bill.month}) — ฿${bill.total.toLocaleString('th-TH')} รับแล้ว`;
-          } else {
+          const currentMonthTH = thaiMonth(new Date().toISOString().slice(0, 10));
+          if (!waterPaid) {
             waterLine = `❌ น้ำ/ไฟ (${bill.month}) — ฿${bill.total.toLocaleString('th-TH')} ยังไม่ได้รับ`;
             unpaid += bill.total;
+          } else if (bill.month === currentMonthTH) {
+            waterLine = `✅ น้ำ/ไฟ (${bill.month}) — ฿${bill.total.toLocaleString('th-TH')} รับแล้ว`;
+          } else {
+            waterLine = `📋 น้ำ/ไฟ ${currentMonthTH}: ยังไม่สรุปบิล (ล่าสุด ${bill.month} ✅จ่ายแล้ว)`;
           }
         }
         await reply(rt,
@@ -679,11 +682,14 @@ app.post('/webhook', async (req, res) => {
               : `  ⏳ ยังไม่จ่ายหมี่ (฿${fmt(wStatus.lastMain.totalAmount)})`)
           : `  📋 ยังไม่มีบิล`;
 
-        const weLine = weBill
-          ? (wePaid
+        const currentMonthTH = thaiMonth(new Date().toISOString().slice(0, 10));
+        const weLine = !weBill
+          ? `  💡 น้ำ/ไฟ: ยังไม่มีบิล`
+          : !wePaid
+            ? `  💡 น้ำ/ไฟ ${weBill.month}: ฿${fmt(weBill.wCost)}+฿${fmt(weBill.eCost)} = ฿${fmt(weBill.total)} ⏳ยังไม่รับ`
+            : weBill.month === currentMonthTH
               ? `  💡 น้ำ/ไฟ ${weBill.month}: ฿${fmt(weBill.wCost)}+฿${fmt(weBill.eCost)} = ฿${fmt(weBill.total)} ✅รับแล้ว`
-              : `  💡 น้ำ/ไฟ ${weBill.month}: ฿${fmt(weBill.wCost)}+฿${fmt(weBill.eCost)} = ฿${fmt(weBill.total)} ⏳ยังไม่รับ`)
-          : `  💡 น้ำ/ไฟ: ยังไม่มีบิล`;
+              : `  💡 น้ำ/ไฟ ${currentMonthTH}: ยังไม่สรุปบิล (ล่าสุด ${weBill.month} ✅จ่ายแล้ว)`;
 
         await reply(rt,
           `📊 ภาพรวม — ${monthName}\n`
