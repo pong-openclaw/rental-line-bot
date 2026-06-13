@@ -1477,13 +1477,14 @@ app.get('/fix-rent-all', async (req, res) => {
 // ── Debug: ดูข้อมูลทุกส่วน ────────────────────────────────────────────────────
 app.get('/debug-all', async (req, res) => {
   try {
-    const [payRows, sentRows, rentRows, wBillRows, wPayRows, wMainRows] = await Promise.all([
+    const [payRows, sentRows, rentRows, wBillRows, wPayRows, wMainRows, weBillRows] = await Promise.all([
       require('./sheets').getValues('หนี้_รับเงิน!A:E'),
       require('./sheets').getValues('หนี้_ส่งธนาคาร!A:D'),
       require('./sheets').getValues('รายรับ!A:F'),
       require('./sheets').getValues('น้ำ_พ่วง!A:I'),
       require('./sheets').getValues('น้ำ_รับเงิน!A:E'),
       require('./sheets').getValues('น้ำ_บิลหลัก!A:F'),
+      require('./sheets').getValues('น้ำไฟ_ห้อง3!A:J'),
     ]);
     const currentMonth = new Date().toISOString().slice(0,7);
     const elapsed = (function(){
@@ -1507,6 +1508,7 @@ app.get('/debug-all', async (req, res) => {
       waterBills: wBillRows.filter(r=>r[0]&&r[0]!=='เดือน').map(r=>({month:r[0],tenant:r[1],old:r[2],new:r[3],units:r[4],rate:r[5],amount:r[6],due:r[8]})),
       waterPayments: wPayRows.filter(r=>r[0]&&r[0]!=='วันที่').map(r=>({date:r[0],tenant:r[1],month:r[2],amount:r[3]})),
       waterMainBills: wMainRows.filter(r=>r[0]&&r[0]!=='วันที่').map(r=>({date:r[0],month:r[1],units:r[2],amount:r[3],status:r[4]})),
+      room3WaterElecBills: weBillRows.filter(r=>r[0]&&r[0]!=='เดือน/ปี'&&r[0]!=='ตัวอย่าง').map(r=>({month:r[0],wOld:r[1],wNew:r[2],wUnits:r[3],wCost:r[4],eOld:r[5],eNew:r[6],eUnits:r[7],eCost:r[8],total:r[9]})),
     });
   } catch(e) { res.status(500).json({error:e.message}); }
 });
