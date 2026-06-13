@@ -410,7 +410,7 @@ async function getWaterOverdue() {
 }
 
 module.exports = {
-  getToken, getValues, updateRange,
+  getToken, getValues, updateRange, appendToSheet,
   // ห้องเช่า
   appendRent, appendWaterElec, getLastMeters, getRecentIncome, getAllIncome,
   getMonthlySummary, getLastWaterElecBill, getAllWaterElecBills, isWaterBillPaid,
