@@ -1530,6 +1530,36 @@ app.get('/fix-hma-april', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// แก้บิลค่าน้ำพ่วง มิ.ย. 2026 — ปรับอัตราจาก 25 → 23 บาท/หน่วย (ตามหลัก: ค่าน้ำหมี่ = อัตราพี่นวล, ส่วนต่างปรับที่อารี/ไข่ดำ)
+app.get('/fix-water-june-rate', async (req, res) => {
+  try {
+    const { getValues, updateRange } = require('./sheets');
+    const rows = await getValues('น้ำ_พ่วง!A:I');
+    const results = [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (r[0] !== '2026-06') continue;
+      const units = parseInt(r[4]) || 0;
+      const rowNum = i + 1; // 1-indexed sheet row
+      const newAmount = +(units * 23).toFixed(2);
+      await updateRange(`น้ำ_พ่วง!F${rowNum}:G${rowNum}`, [23, newAmount]);
+      results.push({ row: rowNum, tenant: r[1], units, rate: 23, amount: newAmount });
+    }
+    // sync บิลหลัก มิ.ย. ให้ตรงกับยอดใหม่
+    const mainRows = await getValues('น้ำ_บิลหลัก!A:F');
+    let mainResult = null;
+    for (let i = 0; i < mainRows.length; i++) {
+      const r = mainRows[i];
+      if (r[1] !== '2026-06') continue;
+      const newTotal = results.reduce((s, x) => s + x.amount, 0);
+      const rowNum = i + 1;
+      await updateRange(`น้ำ_บิลหลัก!D${rowNum}`, [newTotal]);
+      mainResult = { row: rowNum, newTotal };
+    }
+    res.json({ ok: true, results, mainResult });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/create-expense-sheet', async (req, res) => {
   try {
     const { getToken } = require('./sheets');

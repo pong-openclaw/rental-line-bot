@@ -33,6 +33,19 @@ async function getValues(range, spreadsheetId = SPREADSHEET_ID) {
   return data.values || [];
 }
 
+async function updateRange(range, values, spreadsheetId = SPREADSHEET_ID) {
+  const token = await getToken();
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [values], majorDimension: 'ROWS' })
+    }
+  );
+  return res.json();
+}
+
 async function appendToSheet(range, values, spreadsheetId = SPREADSHEET_ID) {
   const token = await getToken();
   const res = await fetch(
@@ -397,7 +410,7 @@ async function getWaterOverdue() {
 }
 
 module.exports = {
-  getToken, getValues,
+  getToken, getValues, updateRange,
   // ห้องเช่า
   appendRent, appendWaterElec, getLastMeters, getRecentIncome, getAllIncome,
   getMonthlySummary, getLastWaterElecBill, getAllWaterElecBills, isWaterBillPaid,
