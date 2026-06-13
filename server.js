@@ -1594,6 +1594,51 @@ app.get('/create-expense-sheet', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/create-water-reference-sheets', async (req, res) => {
+  try {
+    const { getToken, appendToSheet } = require('./sheets');
+    const token = await getToken();
+    const SHEET_ID = '1IWF5gZ_w0EqbMu5uAHMF4w3I6PAgxbKb_aMeRQNDXgE';
+    const sheets = ['น้ำ_พี่นวล', 'น้ำ_รวมบ้าน'];
+
+    const addRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests: sheets.map(title => ({ addSheet: { properties: { title } } })) })
+      }
+    );
+    const addData = await addRes.json();
+    if (!addRes.ok && !addData.error?.message?.includes('already exists')) {
+      return res.status(500).json({ error: 'addSheet failed', addData });
+    }
+
+    // น้ำ_พี่นวล: วันที่ | หน่วย | บาท | บาท/หน่วย
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent('น้ำ_พี่นวล!A1')}?valueInputOption=RAW`,
+      { method:'PUT', headers:{'Authorization':`Bearer ${token}`,'Content-Type':'application/json'},
+        body: JSON.stringify({ values: [['วันที่','หน่วย','บาท','บาท/หน่วย']], majorDimension:'ROWS' }) }
+    );
+    await appendToSheet('น้ำ_พี่นวล!A:D', ['2026-03-07', 18, 365.9, 20.33]);
+    await appendToSheet('น้ำ_พี่นวล!A:D', ['2026-04-06', 24, 492.2, 20.51]);
+
+    // น้ำ_รวมบ้าน: วันที่ | หน่วยรวม | บาทรวม | บาท/หน่วย
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent('น้ำ_รวมบ้าน!A1')}?valueInputOption=RAW`,
+      { method:'PUT', headers:{'Authorization':`Bearer ${token}`,'Content-Type':'application/json'},
+        body: JSON.stringify({ values: [['วันที่','หน่วยรวม','บาทรวม','บาท/หน่วย']], majorDimension:'ROWS' }) }
+    );
+    await appendToSheet('น้ำ_รวมบ้าน!A:D', ['2026-02-07', 49, 1057.0, 21.57]);
+    await appendToSheet('น้ำ_รวมบ้าน!A:D', ['2026-03-07', 46, 988.7, 21.49]);
+    await appendToSheet('น้ำ_รวมบ้าน!A:D', ['2026-04-06', 95, 2243.5, 23.62]);
+    await appendToSheet('น้ำ_รวมบ้าน!A:D', ['2026-05-07', 88, 2024, 23]);
+    await appendToSheet('น้ำ_รวมบ้าน!A:D', ['2026-06-08', 54, 1173.15, 21.725]);
+
+    res.json({ ok: true, addSheet: addData.replies || 'already_exists' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/', (req, res) => res.send('Rental LINE Bot ✅'));
 app.get('/sa-email', (req, res) => {
   try {
