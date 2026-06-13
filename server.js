@@ -1245,6 +1245,17 @@ app.post('/webhook', async (req, res) => {
           .filter(b => !paidWeMonths.has(b.month))
           .map(b => `  ❌ น้ำ/ไฟ ${b.month}: ฿${fmt(b.wCost)}+฿${fmt(b.eCost)} = ฿${fmt(b.total)}`);
 
+        const currentMonthTH = thaiMonth(todayStr);
+        const lastWeBill = weBills.slice(-1)[0] || null;
+        let weStatusLines;
+        if (weOverdue.length > 0) {
+          weStatusLines = weOverdue;
+        } else if (lastWeBill && lastWeBill.month !== currentMonthTH && paidWeMonths.has(lastWeBill.month)) {
+          weStatusLines = [`  📋 น้ำ/ไฟ ${currentMonthTH}: ยังไม่สรุปบิล (ล่าสุด ${lastWeBill.month} ✅จ่ายแล้ว)`];
+        } else {
+          weStatusLines = [`  ✅ น้ำ/ไฟ ไม่มียอดค้าง`];
+        }
+
         // ── 🏦 หนี้บ้าน: ยอดค้างสะสม ─────────────────────────────────────────
         const bankOverdue = [];
         for (const name of BANK_MEMBERS) {
@@ -1269,7 +1280,7 @@ app.post('/webhook', async (req, res) => {
           `━━━━━━━━━━━━━━━━━━━━`,
           `🏠 ห้องเช่า`,
           ...(rentOverdue.length > 0 ? rentOverdue : [`  ✅ ค่าเช่า ไม่มียอดค้าง`]),
-          ...(weOverdue.length > 0 ? weOverdue : [`  ✅ น้ำ/ไฟ ไม่มียอดค้าง`]),
+          ...weStatusLines,
           ``,
           `🌿 สวนยาง`,
           rubBal > 0 ? `  💳 ยอดเบิกไทค้าง: ฿${fmt(rubBal)}` : `  ✅ ไม่มียอดค้างไท`,
