@@ -383,14 +383,14 @@ app.post('/webhook', async (req, res) => {
       // ── สวนยาง: ขายยาง (guided 4 ขั้น) ──────────────────────────────────
       if (/^ขายยาง$/i.test(text)) {
         SESSION.set(userId, { step: 'rubber_gross' });
-        await reply(rt, '🌿 ขายยาง\n\n⚖️ น้ำหนักรวม (กก.)? เช่น 365', QR_GUIDED);
+        await reply(rt, '🌿 ขายยาง (ขั้น 1/5)\n\n⚖️ น้ำหนักรวม (กก.)? เช่น 365', QR_GUIDED);
         continue;
       }
       if (sess?.step === 'rubber_gross') {
         const gross = parseFloat(text.replace(/,/g, ''));
         if (isNaN(gross) || gross <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 365', QR_GUIDED); continue; }
         SESSION.set(userId, { ...sess, step: 'rubber_moisture', gross });
-        await reply(rt, `✅ รวม ${gross} กก.\n\n💧 ความชื้น (%)? เช่น 20`, QR_GUIDED);
+        await reply(rt, `📝 รวม ${gross} กก. (ขั้น 2/5)\n\n💧 ความชื้น (%)? เช่น 20`, QR_GUIDED);
         continue;
       }
       if (sess?.step === 'rubber_moisture') {
@@ -398,7 +398,7 @@ app.post('/webhook', async (req, res) => {
         if (isNaN(moisture) || moisture < 0 || moisture > 60) { await reply(rt, '❌ ใส่ตัวเลข % ครับ เช่น 20', QR_GUIDED); continue; }
         const net = +((sess.gross * (1 - moisture / 100)).toFixed(1));
         SESSION.set(userId, { ...sess, step: 'rubber_price', moisture, net });
-        await reply(rt, `✅ หัก ${moisture}% → สุทธิ ${net} กก.\n\n💵 ราคา/กก.? เช่น 38`, QR_GUIDED);
+        await reply(rt, `📝 หัก ${moisture}% → สุทธิ ${net} กก. (ขั้น 3/5)\n\n💵 ราคา/กก.? เช่น 38`, QR_GUIDED);
         continue;
       }
       if (sess?.step === 'rubber_price') {
@@ -409,9 +409,10 @@ app.post('/webhook', async (req, res) => {
         const halfWorker = +(total - halfOwner).toFixed(2);
         SESSION.set(userId, { ...sess, step: 'rubber_repay', price, total, halfOwner, halfWorker });
         await reply(rt,
-          `✅ ยอดขาย ฿${fmt(total)}\n`
+          `📝 ยอดขาย ฿${fmt(total)} (ขั้น 4/5)\n`
           + `  🏠 เจ้าของ ฿${fmt(halfOwner)}\n`
           + `  👷 ไท ฿${fmt(halfWorker)}\n\n`
+          + `⚠️ ยังไม่บันทึก — ตอบต่ออีก 2 ข้อ\n`
           + `💳 ไทคืนเงินรอบนี้? (บาท หรือ 0)`,
           QR_GUIDED
         );
@@ -421,7 +422,7 @@ app.post('/webhook', async (req, res) => {
         const repay = parseFloat(text.replace(/,/g, '')) || 0;
         if (isNaN(repay) || repay < 0) { await reply(rt, '❌ ใส่ตัวเลขครับ หรือ 0', QR_GUIDED); continue; }
         SESSION.set(userId, { ...sess, step: 'rubber_advance', repay });
-        await reply(rt, `✅ คืน ฿${fmt(repay)}\n\n📥 ไทเบิกใหม่รอบนี้? (บาท หรือ 0)`, QR_GUIDED);
+        await reply(rt, `📝 คืน ฿${fmt(repay)} (ขั้น 5/5)\n\n📥 ไทเบิกใหม่รอบนี้? (บาท หรือ 0)`, QR_GUIDED);
         continue;
       }
       if (sess?.step === 'rubber_advance') {
