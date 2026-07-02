@@ -635,7 +635,7 @@ app.post('/webhook', async (req, res) => {
         const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
         const monthName = THAI_MONTHS[new Date().getMonth() + 1];
         const [sum, bankStatus, wStatus, rubberRows, rubBal, weBill] = await Promise.all([
-          getMonthlySummary(), getBankStatus(), getWaterStatus(), getRecentRubber(2), getWorkerBalance(),
+          getMonthlySummary(), getBankStatus(), getWaterStatus(), getRecentRubber(3), getWorkerBalance(),
           getLastWaterElecBill()
         ]);
         const wePaid = weBill ? await isWaterBillPaid(weBill.month) : false;
