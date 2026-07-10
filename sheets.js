@@ -409,6 +409,20 @@ async function getWaterOverdue() {
   return overdues;
 }
 
+async function getLastWaterRate() {
+  const rows = await getValues('น้ำ_พ่วง!A:I');
+  const bills = rows.filter(r => r[0] && r[0] !== 'เดือน');
+  if (!bills.length) return null;
+  const last = bills[bills.length - 1];
+  return last[5] ? Math.round(parseFloat(last[5])) : null;
+}
+
+async function appendWaterHouseBill(month, totalUnits, pwaBill) {
+  const date    = new Date().toISOString().slice(0, 10);
+  const rateAvg = +(pwaBill / totalUnits).toFixed(2);
+  return appendToSheet('น้ำ_รวมบ้าน!A:D', [date, +totalUnits, +pwaBill, rateAvg]);
+}
+
 module.exports = {
   getToken, getValues, updateRange, appendToSheet,
   // ห้องเช่า
@@ -424,4 +438,5 @@ module.exports = {
   WATER_TENANTS,
   getLastWaterSubMeter, appendWaterBill, appendWaterMainBill,
   appendWaterPayment, appendWaterMainPaid, syncWaterMainBill, getWaterStatus, getWaterHistory, getWaterOverdue,
+  getLastWaterRate, appendWaterHouseBill,
 };

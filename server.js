@@ -10,6 +10,7 @@ const {
   WATER_TENANTS,
   getLastWaterSubMeter, appendWaterBill, appendWaterMainBill,
   appendWaterPayment, appendWaterMainPaid, syncWaterMainBill, getWaterStatus, getWaterHistory, getWaterOverdue,
+  getLastWaterRate, appendWaterHouseBill,
 } = require('./sheets');
 
 const app  = express();
@@ -123,7 +124,18 @@ async function replyMulti(replyToken, texts, qr = QR_RENTAL) {
 }
 
 // ── ค่าน้ำพ่วง: อัตราค่าน้ำต่อหน่วย ─────────────────────────────────────────
-const WATER_RATE = 25; // บาท/หน่วย
+const WATER_RATE = 25; // บาท/หน่วย (legacy — ใช้เฉพาะ water_sub_meter flow)
+
+// ── PWA Standalone Rate (ประปาทุ่งตะโก ชุมพร) ──────────────────────────────
+const PWA_FIXED = 133; // ค่าบริการ บาท/เดือน (คำนวณจากบิลจริง 5 เดือน)
+function pwaStandalone(units) {
+  let v = Math.min(units, 10) * 10.20;
+  if (units > 10) v += Math.min(units - 10, 10) * 16.00;
+  if (units > 20) v += Math.min(units - 20, 10) * 19.00;
+  if (units > 30) v += Math.min(units - 30, 20) * 21.50;
+  if (units > 50) v += (units - 50) * 21.60;
+  return +(v + PWA_FIXED).toFixed(2);
+}
 
 // ── Parsers ───────────────────────────────────────────────────────────────────
 const ROOMS = {
@@ -175,6 +187,27 @@ function thaiDate(iso) {
   return `${d.getDate()} ${TH_MONTHS[d.getMonth()]} ${d.getFullYear() + 543}`;
 }
 function fmt(n) { return Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+function buildWaterPreview(s) {
+  const { areeUnits, kaidamUnits, totalUnits, pwaBill, meeUnits, meeStandalone, calcRate, lastRate, month, rate } = s;
+  const areeAmt   = areeUnits * rate;
+  const kaidamAmt = kaidamUnits * rate;
+  const meeAmt    = +(pwaBill - areeAmt - kaidamAmt).toFixed(2);
+  const meeRate   = +(meeAmt / meeUnits).toFixed(2);
+  const TH_M = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  const [my, mm] = month.split('-');
+  const monthThai = TH_M[parseInt(mm)] + ' ' + (parseInt(my) + 543);
+  let note = '';
+  if (lastRate && lastRate !== calcRate) note = `\n\n💡 สูตร: ฿${calcRate}/หน่วย | เดือนที่แล้ว: ฿${lastRate}/หน่วย`;
+  return `💧 ตัวอย่างบิลประปา ${monthThai}\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `📊 PWA รวม ${totalUnits} หน่วย: ฿${fmt(pwaBill)}\n\n` +
+    `🏠 หมี่  : ${meeUnits} หน่วย → ฿${fmt(meeAmt)} (฿${meeRate}/หน่วย)\n` +
+    `   (อัตราประปาเดี่ยว: ฿${fmt(meeStandalone)})\n` +
+    `👤 อารี  : ${areeUnits} หน่วย × ฿${rate} = ฿${fmt(areeAmt)}\n` +
+    `👤 ไข่ดำ : ${kaidamUnits} หน่วย × ฿${rate} = ฿${fmt(kaidamAmt)}\n` +
+    `━━━━━━━━━━━━━━━━━━━━` + note;
+}
 
 // ── Webhook ───────────────────────────────────────────────────────────────────
 // ── Session state (guided input) ─────────────────────────────────────────────
@@ -984,11 +1017,11 @@ app.post('/webhook', async (req, res) => {
         continue;
       }
 
-      // ── ออกบิลประปา: มิเตอร์อารี → มิเตอร์ไข่ดำ → ออกบิล (@25 บาท/หน่วย) ───
+      // ── ออกบิลประปา: 4-step flow + preview ──────────────────────────────────
       if (/^ออกบิลประปา$|^บันทึกน้ำพ่วง$/i.test(text)) {
         const prevAree = await getLastWaterSubMeter('อารี');
         SESSION.set(userId, { step: 'water_bill_aree', prevAree });
-        await reply(rt, `💧 ออกบิลประปา\n\nขั้นที่ 1/2\n💧 มิเตอร์อารีครั้งนี้?\n(ครั้งก่อน: ${prevAree})`, QR_GUIDED);
+        await reply(rt, `💧 ออกบิลประปา\n\nขั้นที่ 1/4\n💧 มิเตอร์อารีครั้งนี้?\n(ครั้งก่อน: ${prevAree})`, QR_GUIDED);
         continue;
       }
       if (sess?.step === 'water_bill_aree') {
@@ -996,44 +1029,124 @@ app.post('/webhook', async (req, res) => {
         if (isNaN(m) || m < sess.prevAree) { await reply(rt, `❌ ต้องมากกว่า ${sess.prevAree} ครับ`, QR_GUIDED); continue; }
         const prevKaidam = await getLastWaterSubMeter('ไข่ดำ');
         SESSION.set(userId, { ...sess, step: 'water_bill_kaidam', areeMeter: m, prevKaidam });
-        await reply(rt, `✅ อารี: ${sess.prevAree} → ${m} (${m - sess.prevAree} หน่วย)\n\nขั้นที่ 2/2\n💧 มิเตอร์ไข่ดำครั้งนี้?\n(ครั้งก่อน: ${prevKaidam})`, QR_GUIDED);
+        await reply(rt, `✅ อารี: ${sess.prevAree} → ${m} (${m - sess.prevAree} หน่วย)\n\nขั้นที่ 2/4\n💧 มิเตอร์ไข่ดำครั้งนี้?\n(ครั้งก่อน: ${prevKaidam})`, QR_GUIDED);
         continue;
       }
       if (sess?.step === 'water_bill_kaidam') {
         const m = parseInt(text.replace(/,/g, ''));
         if (isNaN(m) || m < sess.prevKaidam) { await reply(rt, `❌ ต้องมากกว่า ${sess.prevKaidam} ครับ`, QR_GUIDED); continue; }
-        SESSION.delete(userId);
-
-        const { prevAree, areeMeter, prevKaidam } = sess;
+        SESSION.set(userId, { ...sess, step: 'water_bill_total_units', kaidamMeter: m });
+        const areeU = sess.areeMeter - sess.prevAree;
+        const kaidamU = m - sess.prevKaidam;
+        await reply(rt, `✅ ไข่ดำ: ${sess.prevKaidam} → ${m} (${kaidamU} หน่วย)\n\nขั้นที่ 3/4\n🏠 หน่วยรวมบ้านทั้งหมด (จากบิล PWA)?\n(อารี+ไข่ดำ รวม ${areeU + kaidamU} หน่วย)`, QR_GUIDED);
+        continue;
+      }
+      if (sess?.step === 'water_bill_total_units') {
+        const totalUnits  = parseInt(text.replace(/,/g, ''));
+        const areeUnits   = sess.areeMeter - sess.prevAree;
+        const kaidamUnits = sess.kaidamMeter - sess.prevKaidam;
+        const subUnits    = areeUnits + kaidamUnits;
+        if (isNaN(totalUnits) || totalUnits <= subUnits) {
+          await reply(rt, `❌ ต้องมากกว่า ${subUnits} หน่วย (อารี+ไข่ดำ) ครับ`, QR_GUIDED);
+          continue;
+        }
+        SESSION.set(userId, { ...sess, step: 'water_bill_pwa_amount', totalUnits });
+        await reply(rt, `✅ รวมบ้าน: ${totalUnits} หน่วย (หมี่: ${totalUnits - subUnits} หน่วย)\n\nขั้นที่ 4/4\n💰 ยอดบิล PWA รวม (บาท)?`, QR_GUIDED);
+        continue;
+      }
+      if (sess?.step === 'water_bill_pwa_amount') {
+        const pwaBill = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(pwaBill) || pwaBill <= 0) { await reply(rt, '❌ ใส่ยอดเงิน เช่น 1334.93', QR_GUIDED); continue; }
+        const { prevAree, areeMeter, prevKaidam, kaidamMeter, totalUnits } = sess;
         const areeUnits   = areeMeter - prevAree;
-        const kaidamUnits = m - prevKaidam;
-        const areeAmt     = +(areeUnits   * WATER_RATE).toFixed(2);
-        const kaidamAmt   = +(kaidamUnits * WATER_RATE).toFixed(2);
-        const totalUnits  = areeUnits + kaidamUnits;
-        const totalAmt    = +(areeAmt + kaidamAmt).toFixed(2);
-
-        const today      = new Date().toISOString().slice(0, 10);
-        const month      = today.slice(0, 7);
-        const dueD       = new Date(today);
-        dueD.setDate(dueD.getDate() + 7);
-        const dueDateStr = dueD.toISOString().slice(0, 10);
-
-        await Promise.all([
-          appendWaterMainBill(month, totalUnits, totalAmt),
-          appendWaterBill(month, 'อารี',  prevAree,   areeMeter, WATER_RATE, today, dueDateStr),
-          appendWaterBill(month, 'ไข่ดำ', prevKaidam, m,         WATER_RATE, today, dueDateStr),
-        ]);
-
-        const TH_M = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
-        const [my, mm] = month.split('-');
-        const monthThai = TH_M[parseInt(mm)] + ' ' + (parseInt(my) + 543);
-        const dueThai   = `${dueD.getDate()} ${TH_M[dueD.getMonth()+1]} ${dueD.getFullYear()+543}`;
-
-        const billAree   = `━━━━━━━━━━━━━━━━━━━━\n💧 ใบแจ้งค่าน้ำประปา\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nผู้เช่า: อารี\n\n📊 การใช้น้ำ\nมิเตอร์ครั้งก่อน : ${prevAree}\nมิเตอร์ครั้งนี้  : ${areeMeter}\nหน่วยที่ใช้      : ${areeUnits} หน่วย\nราคาต่อหน่วย     : ฿${WATER_RATE}\n\n💰 ยอดชำระ: ฿${fmt(areeAmt)}\n\n📅 ชำระภายใน: ${dueThai}\n📍 ชำระที่: หมี่ (ห้องด้านหน้า)\n━━━━━━━━━━━━━━━━━━━━`;
-        const billKaidam = `━━━━━━━━━━━━━━━━━━━━\n💧 ใบแจ้งค่าน้ำประปา\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nผู้เช่า: ไข่ดำ\n\n📊 การใช้น้ำ\nมิเตอร์ครั้งก่อน : ${prevKaidam}\nมิเตอร์ครั้งนี้  : ${m}\nหน่วยที่ใช้      : ${kaidamUnits} หน่วย\nราคาต่อหน่วย     : ฿${WATER_RATE}\n\n💰 ยอดชำระ: ฿${fmt(kaidamAmt)}\n\n📅 ชำระภายใน: ${dueThai}\n📍 ชำระที่: หมี่ (ห้องด้านหน้า)\n━━━━━━━━━━━━━━━━━━━━`;
-        const billMee    = `━━━━━━━━━━━━━━━━━━━━\n💧 สรุปค่าน้ำพ่วง\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nราคาต่อหน่วย: ฿${WATER_RATE}\n\nอารี  : ${areeUnits} หน่วย = ฿${fmt(areeAmt)}\nไข่ดำ : ${kaidamUnits} หน่วย = ฿${fmt(kaidamAmt)}\n\n💰 รวมที่จะได้รับ: ฿${fmt(totalAmt)}\n📅 ภายใน: ${dueThai}\n━━━━━━━━━━━━━━━━━━━━`;
-
-        await replyMulti(rt, [billAree, billKaidam, billMee], QR_WATER);
+        const kaidamUnits = kaidamMeter - prevKaidam;
+        const subUnits    = areeUnits + kaidamUnits;
+        const meeUnits    = totalUnits - subUnits;
+        const meeStandalone = pwaStandalone(meeUnits);
+        const calcRate    = Math.floor((pwaBill - meeStandalone) / subUnits);
+        const lastRate    = await getLastWaterRate();
+        const today       = new Date().toISOString().slice(0, 10);
+        const month       = today.slice(0, 7);
+        const dueD        = new Date(today); dueD.setDate(dueD.getDate() + 7);
+        const dueDateStr  = dueD.toISOString().slice(0, 10);
+        const newSess = {
+          step: 'water_bill_preview', activeRate: calcRate,
+          prevAree, areeMeter, areeUnits, prevKaidam, kaidamMeter, kaidamUnits,
+          subUnits, meeUnits, totalUnits, pwaBill, meeStandalone, calcRate, lastRate,
+          month, today, dueDateStr,
+        };
+        SESSION.set(userId, newSess);
+        const preview = buildWaterPreview({ ...newSess, rate: calcRate });
+        const qr = { items: [
+          { type:'action', action:{ type:'message', label:`✅ ยืนยัน ฿${calcRate}/หน่วย`,          text:'ยืนยันบันทึกน้ำ' } },
+          ...(lastRate && lastRate !== calcRate ? [{ type:'action', action:{ type:'message', label:`↩️ คง ฿${lastRate}/หน่วย`, text:'ใช้อัตราเดิมน้ำ' } }] : []),
+          { type:'action', action:{ type:'message', label:'✏️ แก้อัตรา',                           text:'แก้อัตราน้ำ' } },
+          { type:'action', action:{ type:'message', label:'❌ ยกเลิก',                              text:'ยกเลิก' } },
+        ]};
+        await reply(rt, preview, qr);
+        continue;
+      }
+      if (sess?.step === 'water_bill_preview') {
+        const showPreview = async (rate) => {
+          SESSION.set(userId, { ...sess, activeRate: rate });
+          const preview = buildWaterPreview({ ...sess, rate });
+          const qr = { items: [
+            { type:'action', action:{ type:'message', label:`✅ ยืนยัน ฿${rate}/หน่วย`,             text:'ยืนยันบันทึกน้ำ' } },
+            ...(sess.lastRate && sess.lastRate !== rate ? [{ type:'action', action:{ type:'message', label:`↩️ คง ฿${sess.lastRate}/หน่วย`, text:'ใช้อัตราเดิมน้ำ' } }] : []),
+            ...(sess.calcRate !== rate ? [{ type:'action', action:{ type:'message', label:`🔄 สูตร ฿${sess.calcRate}/หน่วย`, text:'ใช้สูตรน้ำ' } }] : []),
+            { type:'action', action:{ type:'message', label:'✏️ แก้อัตรา',                          text:'แก้อัตราน้ำ' } },
+            { type:'action', action:{ type:'message', label:'❌ ยกเลิก',                             text:'ยกเลิก' } },
+          ]};
+          await reply(rt, preview, qr);
+        };
+        if (text === 'ใช้อัตราเดิมน้ำ' && sess.lastRate) { await showPreview(sess.lastRate); continue; }
+        if (text === 'ใช้สูตรน้ำ')                        { await showPreview(sess.calcRate); continue; }
+        if (text === 'แก้อัตราน้ำ') {
+          SESSION.set(userId, { ...sess, step: 'water_bill_custom_rate' });
+          await reply(rt, '✏️ ใส่อัตรา บาท/หน่วย ที่ต้องการ (เช่น 23)', QR_GUIDED);
+          continue;
+        }
+        if (text === 'ยืนยันบันทึกน้ำ') {
+          SESSION.delete(userId);
+          const { prevAree, areeMeter, areeUnits, prevKaidam, kaidamMeter, kaidamUnits,
+                  subUnits, meeUnits, totalUnits, pwaBill, month, today, dueDateStr, activeRate } = sess;
+          const rate      = activeRate;
+          const areeAmt   = areeUnits * rate;
+          const kaidamAmt = kaidamUnits * rate;
+          const meeAmt    = +(pwaBill - areeAmt - kaidamAmt).toFixed(2);
+          const subTotal  = +(areeAmt + kaidamAmt).toFixed(2);
+          await Promise.all([
+            appendWaterMainBill(month, subUnits, subTotal),
+            appendWaterBill(month, 'อารี',  prevAree,   areeMeter,   rate, today, dueDateStr),
+            appendWaterBill(month, 'ไข่ดำ', prevKaidam, kaidamMeter, rate, today, dueDateStr),
+            appendWaterHouseBill(month, totalUnits, pwaBill),
+          ]);
+          const TH_M = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+          const [my, mm] = month.split('-');
+          const monthThai = TH_M[parseInt(mm)] + ' ' + (parseInt(my) + 543);
+          const dueD      = new Date(dueDateStr);
+          const dueThai   = `${dueD.getDate()} ${TH_M[dueD.getMonth()+1]} ${dueD.getFullYear()+543}`;
+          const billAree   = `━━━━━━━━━━━━━━━━━━━━\n💧 ใบแจ้งค่าน้ำประปา\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nผู้เช่า: อารี\n\n📊 การใช้น้ำ\nมิเตอร์ครั้งก่อน : ${prevAree}\nมิเตอร์ครั้งนี้  : ${areeMeter}\nหน่วยที่ใช้      : ${areeUnits} หน่วย\nราคาต่อหน่วย     : ฿${rate}\n\n💰 ยอดชำระ: ฿${fmt(areeAmt)}\n\n📅 ชำระภายใน: ${dueThai}\n📍 ชำระที่: หมี่ (ห้องด้านหน้า)\n━━━━━━━━━━━━━━━━━━━━`;
+          const billKaidam = `━━━━━━━━━━━━━━━━━━━━\n💧 ใบแจ้งค่าน้ำประปา\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nผู้เช่า: ไข่ดำ\n\n📊 การใช้น้ำ\nมิเตอร์ครั้งก่อน : ${prevKaidam}\nมิเตอร์ครั้งนี้  : ${kaidamMeter}\nหน่วยที่ใช้      : ${kaidamUnits} หน่วย\nราคาต่อหน่วย     : ฿${rate}\n\n💰 ยอดชำระ: ฿${fmt(kaidamAmt)}\n\n📅 ชำระภายใน: ${dueThai}\n📍 ชำระที่: หมี่ (ห้องด้านหน้า)\n━━━━━━━━━━━━━━━━━━━━`;
+          const billMee    = `━━━━━━━━━━━━━━━━━━━━\n💧 สรุปค่าน้ำพ่วง\n━━━━━━━━━━━━━━━━━━━━\nเดือน: ${monthThai}\nบิล PWA: ${totalUnits} หน่วย = ฿${fmt(pwaBill)}\n\n👤 อารี  : ${areeUnits} หน่วย × ฿${rate} = ฿${fmt(areeAmt)}\n👤 ไข่ดำ : ${kaidamUnits} หน่วย × ฿${rate} = ฿${fmt(kaidamAmt)}\n\n💰 รวมที่จะได้รับ: ฿${fmt(subTotal)}\n🏠 ส่วนหมี่: ${meeUnits} หน่วย = ฿${fmt(meeAmt)}\n\n📅 ภายใน: ${dueThai}\n━━━━━━━━━━━━━━━━━━━━`;
+          await replyMulti(rt, [billAree, billKaidam, billMee], QR_WATER);
+          continue;
+        }
+      }
+      if (sess?.step === 'water_bill_custom_rate') {
+        const customRate = parseInt(text.replace(/,/g, ''));
+        if (isNaN(customRate) || customRate < 1) { await reply(rt, '❌ ใส่ตัวเลขจำนวนเต็ม เช่น 23', QR_GUIDED); continue; }
+        const newSess = { ...sess, step: 'water_bill_preview', activeRate: customRate };
+        SESSION.set(userId, newSess);
+        const preview = buildWaterPreview({ ...newSess, rate: customRate });
+        const qr = { items: [
+          { type:'action', action:{ type:'message', label:`✅ ยืนยัน ฿${customRate}/หน่วย`,          text:'ยืนยันบันทึกน้ำ' } },
+          ...(sess.lastRate && sess.lastRate !== customRate ? [{ type:'action', action:{ type:'message', label:`↩️ คง ฿${sess.lastRate}/หน่วย`, text:'ใช้อัตราเดิมน้ำ' } }] : []),
+          ...(sess.calcRate !== customRate ? [{ type:'action', action:{ type:'message', label:`🔄 สูตร ฿${sess.calcRate}/หน่วย`, text:'ใช้สูตรน้ำ' } }] : []),
+          { type:'action', action:{ type:'message', label:'✏️ แก้อัตรา',                             text:'แก้อัตราน้ำ' } },
+          { type:'action', action:{ type:'message', label:'❌ ยกเลิก',                               text:'ยกเลิก' } },
+        ]};
+        await reply(rt, preview, qr);
         continue;
       }
 
