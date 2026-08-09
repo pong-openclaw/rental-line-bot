@@ -423,15 +423,15 @@ app.post('/webhook', async (req, res) => {
         const gross = parseFloat(text.replace(/,/g, ''));
         if (isNaN(gross) || gross <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ เช่น 365', QR_GUIDED); continue; }
         SESSION.set(userId, { ...sess, step: 'rubber_moisture', gross });
-        await reply(rt, `📝 รวม ${gross} กก. (ขั้น 2/5)\n\n💧 ความชื้น (%)? เช่น 20`, QR_GUIDED);
+        await reply(rt, `📝 รวม ${gross} กก. (ขั้น 2/5)\n\n💧 ร้านหักน้ำหนัก (กก.)? เช่น 73`, QR_GUIDED);
         continue;
       }
       if (sess?.step === 'rubber_moisture') {
-        const moisture = parseFloat(text.replace(/,/g, '').replace(/%/g, ''));
-        if (isNaN(moisture) || moisture < 0 || moisture > 60) { await reply(rt, '❌ ใส่ตัวเลข % ครับ เช่น 20', QR_GUIDED); continue; }
-        const net = +((sess.gross * (1 - moisture / 100)).toFixed(1));
-        SESSION.set(userId, { ...sess, step: 'rubber_price', moisture, net });
-        await reply(rt, `📝 หัก ${moisture}% → สุทธิ ${net} กก. (ขั้น 3/5)\n\n💵 ราคา/กก.? เช่น 38`, QR_GUIDED);
+        const deductKg = parseFloat(text.replace(/,/g, ''));
+        if (isNaN(deductKg) || deductKg < 0 || deductKg >= sess.gross) { await reply(rt, `❌ ใส่ กก. ที่หัก (ต้องน้อยกว่า ${sess.gross}) ครับ เช่น 73`, QR_GUIDED); continue; }
+        const net = +(sess.gross - deductKg).toFixed(1);
+        SESSION.set(userId, { ...sess, step: 'rubber_price', deductKg, net });
+        await reply(rt, `📝 หัก ${deductKg} กก. → สุทธิ ${net} กก. (ขั้น 3/5)\n\n💵 ราคา/กก.? เช่น 38`, QR_GUIDED);
         continue;
       }
       if (sess?.step === 'rubber_price') {
@@ -462,20 +462,20 @@ app.post('/webhook', async (req, res) => {
         const advance = parseFloat(text.replace(/,/g, '')) || 0;
         if (isNaN(advance) || advance < 0) { await reply(rt, '❌ ใส่ตัวเลขครับ หรือ 0', QR_GUIDED); continue; }
         SESSION.delete(userId);
-        const { gross, moisture, net, price, total, halfOwner, halfWorker, repay } = sess;
+        const { gross, deductKg, net, price, total, halfOwner, halfWorker, repay } = sess;
         const toOwner    = +(halfOwner + repay).toFixed(2);
-        const workerNet  = +(halfWorker - repay).toFixed(2); // J = ส่วนแบ่งคนตัด - ชำระคืน (advance แยกต่างหาก)
+        const workerNet  = +(halfWorker - repay).toFixed(2);
         const date       = new Date().toISOString().slice(0, 10);
-        const note       = `หัก ${moisture}% ความชื้น`;
-        // A-M: วันที่, รวม, สุทธิ, ราคา, ยอดขาย, เจ้าของ, คนตัด, คืน, โอนเจ้าของ, คนตัดสุทธิ, ความชื้น, หมายเหตุ, เบิกใหม่
-        await appendRubberSale([date, gross, net, price, total, halfOwner, halfWorker, repay, toOwner, workerNet, moisture, note, advance || '']);
+        const note       = `หัก ${deductKg} กก.`;
+        // A-M: วันที่, รวม, สุทธิ, ราคา, ยอดขาย, เจ้าของ, คนตัด, คืน, โอนเจ้าของ, คนตัดสุทธิ, กก.หัก, หมายเหตุ, เบิกใหม่
+        await appendRubberSale([date, gross, net, price, total, halfOwner, halfWorker, repay, toOwner, workerNet, deductKg, note, advance || '']);
         // อัปเดต ติดตามหนี้
         if (repay > 0) await appendDebtRecord(date, `คืนหนี้ รอบ ${date}`, 0, repay, '');
         if (advance > 0) await appendDebtRecord(date, `เบิกใหม่ รอบ ${date}`, advance, 0, '');
         const bal = await getWorkerBalance();
         await reply(rt,
           `✅ บันทึกขายยางแล้ว\n\n`
-          + `⚖️ ${gross} กก. (สุทธิ ${net} กก.)\n`
+          + `⚖️ ${gross} กก. หัก ${deductKg} กก. → สุทธิ ${net} กก.\n`
           + `💵 ฿${price}/กก. = ฿${fmt(total)}\n`
           + `🏠 โอนเจ้าของ: ฿${fmt(toOwner)}\n`
           + `👷 ไทได้รับ: ฿${fmt(workerNet)}\n\n`
