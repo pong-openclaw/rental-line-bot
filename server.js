@@ -1470,28 +1470,6 @@ app.get('/setup-richmenu', async (req, res) => {
   } catch (e) { res.status(500).send('❌ ' + e.message); }
 });
 
-app.get('/fix-rubber-20260713', async (req, res) => {
-  try {
-    const RUBBER_ID = process.env.RUBBER_ID || '12N5-WXFkoKg06K7F5rGA0bfjHJJZ06cIJ8oKy1WsmJ8';
-    const rows = await getValues('ชีต1!A:M', RUBBER_ID);
-    const idx = rows.findIndex(r => r[0] === '2026-07-13');
-    if (idx === -1) return res.json({ error: 'ไม่พบแถว 2026-07-13' });
-    const old = rows[idx];
-    const gross = 302, deductKg = 55, net = 247, price = 42;
-    const total = net * price;
-    const halfOwner = Math.round(total / 2);
-    const halfWorker = total - halfOwner;
-    const repay = parseFloat(old[7]) || 0;
-    const toOwner = +(halfOwner + repay).toFixed(2);
-    const workerNet = +(halfWorker - repay).toFixed(2);
-    const moisture = +(deductKg / gross * 100).toFixed(2);
-    const note = `หัก ${deductKg} กก. (${moisture}%)`;
-    const newRow = [old[0], gross, net, price, total, halfOwner, halfWorker, repay, toOwner, workerNet, moisture, note, old[12] || ''];
-    const rowNum = idx + 1;
-    const result = await updateRange(`ชีต1!A${rowNum}:M${rowNum}`, newRow, RUBBER_ID);
-    res.json({ ok: true, rowNum, old, newRow, updatedCells: result.updatedCells });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
 
 app.get('/debug-rubber', async (req, res) => {
   try {
