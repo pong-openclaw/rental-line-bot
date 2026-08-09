@@ -586,7 +586,7 @@ app.post('/webhook', async (req, res) => {
 
       // ── สวนยาง: ประวัติยาง ───────────────────────────────────────────────
       if (/^ประวัติยาง$/i.test(text)) {
-        const rows = await getRecentRubber(5);
+        const rows = await getRecentRubber(12);
         if (rows.length === 0) { await reply(rt, '🌿 ยังไม่มีประวัติขายยางครับ', QR_RUBBER); continue; }
         const TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
         const lines = rows.map(r => {
