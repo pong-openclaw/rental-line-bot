@@ -590,7 +590,7 @@ app.post('/webhook', async (req, res) => {
         const TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
         const lines = rows.map(r => {
           const d = new Date(r[0]);
-          return `📅 ${d.getDate()} ${TH_M[d.getMonth()]} ${d.getFullYear()+543}\n   ⚖️ ${r[2]} กก. × ฿${r[3]} = ฿${fmt(r[4])}`;
+          return `📅 ${d.getDate()} ${TH_M[d.getMonth()]} ${d.getFullYear()+543}\n   ⚖️ (${r[1]})${r[2]}×${r[3]}=${fmt(r[4])}(${fmt(r[5])})`;
         });
         const bal = await getWorkerBalance();
         await reply(rt, `📜 ประวัติขายยางล่าสุด\n\n${lines.join('\n\n')}\n\n💳 ยอดค้างไท: ฿${fmt(bal)}`, QR_RUBBER);
@@ -605,7 +605,7 @@ app.post('/webhook', async (req, res) => {
         const TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
         const recentLines = sum.recent.map(r => {
           const d = new Date(r.date);
-          return `  • ${d.getDate()} ${TH_M[d.getMonth()]} ${d.getFullYear()+543}: ${r.net} กก. ฿${fmt(r.total)}`;
+          return `  • ${d.getDate()} ${TH_M[d.getMonth()]} ${d.getFullYear()+543}: (${r.gross})${r.net}×${r.price}=${fmt(r.total)}(${fmt(r.halfOwner)})`;
         }).join('\n');
         const expLines = Object.entries(exp.byType)
           .map(([type, v]) => `  ${type}: ฿${fmt(v.owner)}`)
@@ -685,7 +685,7 @@ app.post('/webhook', async (req, res) => {
         const rubLines = rubberRows.length > 0
           ? rubberRows.map(r => {
               const d = new Date(r[0]);
-              return `  • ${d.getDate()} ${TH_M[d.getMonth()]} — ${r[2]} กก. × ฿${r[3]} = ฿${fmt(r[4])}`;
+              return `  • ${d.getDate()} ${TH_M[d.getMonth()]} — (${r[1]})${r[2]}×${r[3]}=${fmt(r[4])}(${fmt(r[5])})`;
             }).join('\n')
           : '  ยังไม่มีข้อมูล';
 

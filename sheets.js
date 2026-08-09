@@ -160,8 +160,8 @@ async function getRubberSummary() {
   const totalBaht  = yearRows.reduce((s, r) => s + (parseFloat(r[4]) || 0), 0);
   const ownerBaht  = yearRows.reduce((s, r) => s + (parseFloat(r[5]) || 0), 0);
   const recent = data.slice(-3).reverse().map(r => ({
-    date: r[0], net: parseFloat(r[2]) || 0,
-    price: parseFloat(r[3]) || 0, total: parseFloat(r[4]) || 0
+    date: r[0], gross: parseFloat(r[1]) || 0, net: parseFloat(r[2]) || 0,
+    price: parseFloat(r[3]) || 0, total: parseFloat(r[4]) || 0, halfOwner: parseFloat(r[5]) || 0
   }));
   return { totalKgNet, totalBaht, ownerBaht, count: yearRows.length, recent, year: thisYear };
 }
