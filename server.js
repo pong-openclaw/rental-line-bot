@@ -466,9 +466,10 @@ app.post('/webhook', async (req, res) => {
         const toOwner    = +(halfOwner + repay).toFixed(2);
         const workerNet  = +(halfWorker - repay).toFixed(2);
         const date       = new Date().toISOString().slice(0, 10);
-        const note       = `หัก ${deductKg} กก.`;
-        // A-M: วันที่, รวม, สุทธิ, ราคา, ยอดขาย, เจ้าของ, คนตัด, คืน, โอนเจ้าของ, คนตัดสุทธิ, กก.หัก, หมายเหตุ, เบิกใหม่
-        await appendRubberSale([date, gross, net, price, total, halfOwner, halfWorker, repay, toOwner, workerNet, deductKg, note, advance || '']);
+        const moisture   = +(deductKg / gross * 100).toFixed(2);
+        const note       = `หัก ${deductKg} กก. (${moisture}%)`;
+        // A-M: วันที่, รวม, สุทธิ, ราคา, ยอดขาย, เจ้าของ, คนตัด, คืน, โอนเจ้าของ, คนตัดสุทธิ, ความชื้น%, หมายเหตุ, เบิกใหม่
+        await appendRubberSale([date, gross, net, price, total, halfOwner, halfWorker, repay, toOwner, workerNet, moisture, note, advance || '']);
         // อัปเดต ติดตามหนี้
         if (repay > 0) await appendDebtRecord(date, `คืนหนี้ รอบ ${date}`, 0, repay, '');
         if (advance > 0) await appendDebtRecord(date, `เบิกใหม่ รอบ ${date}`, advance, 0, '');
