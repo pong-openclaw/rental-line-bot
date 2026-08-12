@@ -1420,53 +1420,6 @@ app.get('/setup-richmenu', async (req, res) => {
 });
 
 
-app.get('/fix-water-202608', async (req, res) => {
-  try {
-    const { appendToSheet } = require('./sheets');
-    const rate = 23;
-
-    // 1+2: แก้ น้ำ_พ่วง ส.ค. อารี+ไข่ดำ → rate 23
-    const sub = await getValues('น้ำ_พ่วง!A:I');
-    const results = { sub: [], main: null, house: [] };
-    for (let i = 0; i < sub.length; i++) {
-      const r = sub[i];
-      if (r[0] === '2026-08' && (r[1] === 'อารี' || r[1] === 'ไข่ดำ')) {
-        const units  = parseInt(r[4]);
-        const amount = +(units * rate).toFixed(2);
-        const newRow = [r[0], r[1], r[2], r[3], units, rate, amount, r[7], r[8]];
-        const rowNum = i + 1;
-        const upd = await updateRange(`น้ำ_พ่วง!A${rowNum}:I${rowNum}`, newRow, undefined);
-        results.sub.push({ rowNum, old: r, newRow, upd: upd.updatedCells });
-      }
-    }
-
-    // 3: แก้ น้ำ_บิลหลัก ส.ค. → รวมอารี+ไข่ดำ ให้ครบ
-    const main = await getValues('น้ำ_บิลหลัก!A:F');
-    const idxMain = main.findIndex(r => r[1] === '2026-08');
-    if (idxMain !== -1) {
-      const old = main[idxMain];
-      const totalUnits  = 15 + 11; // อารี + ไข่ดำ
-      const totalAmount = 15 * rate + 11 * rate;
-      const newRow = [old[0], old[1], totalUnits, totalAmount, old[4], old[5] || ''];
-      const rowNum = idxMain + 1;
-      const upd = await updateRange(`น้ำ_บิลหลัก!A${rowNum}:F${rowNum}`, newRow, undefined);
-      results.main = { rowNum, old, newRow, upd: upd.updatedCells };
-    }
-
-    // 4+5: เพิ่มแถว น้ำ_รวมบ้าน ก.ค. + ส.ค.
-    const houseRows = [
-      ['2026-07-05', 61, 1334.93, +(1334.93/61).toFixed(2)],
-      ['2026-08-05', 60, 1311.82, +(1311.82/60).toFixed(2)],
-    ];
-    for (const row of houseRows) {
-      const r = await appendToSheet('น้ำ_รวมบ้าน!A:D', row);
-      results.house.push({ row, result: r });
-    }
-
-    res.json({ ok: true, results });
-  } catch (e) { res.status(500).json({ error: e.message, stack: e.stack }); }
-});
-
 app.get('/debug-water', async (req, res) => {
   try {
     const [sub, main, house, nuan] = await Promise.all([
