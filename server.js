@@ -1427,13 +1427,14 @@ app.get('/setup-richmenu', async (req, res) => {
 
 app.get('/debug-water', async (req, res) => {
   try {
-    const [sub, main, house, nuan] = await Promise.all([
+    const [sub, main, house, nuan, pay] = await Promise.all([
       getValues('น้ำ_พ่วง!A:I'),
       getValues('น้ำ_บิลหลัก!A:F'),
       getValues('น้ำ_รวมบ้าน!A:D'),
       getValues('น้ำ_พี่นวล!A:D'),
+      getValues('น้ำ_รับเงิน!A:E'),
     ]);
-    res.json({ sub, main, house, nuan });
+    res.json({ sub, main, house, nuan, pay });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
