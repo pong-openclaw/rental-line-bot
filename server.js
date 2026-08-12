@@ -1425,23 +1425,6 @@ app.get('/setup-richmenu', async (req, res) => {
 });
 
 
-app.get('/fix-water-payment-month', async (req, res) => {
-  try {
-    const pay = await getValues('น้ำ_รับเงิน!A:E');
-    const results = [];
-    for (let i = 0; i < pay.length; i++) {
-      const r = pay[i];
-      if (r[0] === '2026-08-12' && r[2] === '2026-08') {
-        const newRow = [r[0], r[1], '2026-07', r[3], r[4] || ''];
-        const rowNum = i + 1;
-        const upd = await updateRange(`น้ำ_รับเงิน!A${rowNum}:E${rowNum}`, newRow, undefined);
-        results.push({ rowNum, old: r, newRow, upd: upd.updatedCells });
-      }
-    }
-    res.json({ ok: true, results });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
 app.get('/debug-water', async (req, res) => {
   try {
     const [sub, main, house, nuan, pay] = await Promise.all([
