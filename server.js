@@ -1420,6 +1420,13 @@ app.get('/setup-richmenu', async (req, res) => {
 });
 
 
+app.get('/debug-water', async (req, res) => {
+  try {
+    const rows = await getValues('น้ำ_พ่วง!A:I');
+    res.json({ rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/debug-rubber', async (req, res) => {
   try {
     const crypto = require('crypto');
