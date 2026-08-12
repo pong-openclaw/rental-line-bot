@@ -417,6 +417,21 @@ async function getLastWaterRate() {
   return last[5] ? Math.round(parseFloat(last[5])) : null;
 }
 
+async function getOldestUnpaidWaterMonth(tenant) {
+  const [billRows, payRows] = await Promise.all([
+    getValues('น้ำ_พ่วง!A:I'),
+    getValues('น้ำ_รับเงิน!A:E'),
+  ]);
+  const bills = billRows
+    .filter(r => r[0] && r[0] !== 'เดือน' && r[1] === tenant)
+    .sort((a, b) => a[0].localeCompare(b[0]));
+  const paidMonths = new Set(
+    payRows.filter(r => r[0] && r[0] !== 'วันที่' && r[1] === tenant).map(r => r[2])
+  );
+  const oldest = bills.find(b => !paidMonths.has(b[0]));
+  return oldest ? oldest[0] : new Date().toISOString().slice(0, 7);
+}
+
 async function getLastWaterSubUnits() {
   const rows = await getValues('น้ำ_พ่วง!A:I');
   const bills = rows.filter(r => r[0] && r[0] !== 'เดือน');
@@ -446,5 +461,5 @@ module.exports = {
   WATER_TENANTS,
   getLastWaterSubMeter, appendWaterBill, appendWaterMainBill,
   appendWaterPayment, appendWaterMainPaid, syncWaterMainBill, getWaterStatus, getWaterHistory, getWaterOverdue,
-  getLastWaterRate, getLastWaterSubUnits, appendWaterHouseBill,
+  getLastWaterRate, getLastWaterSubUnits, getOldestUnpaidWaterMonth, appendWaterHouseBill,
 };

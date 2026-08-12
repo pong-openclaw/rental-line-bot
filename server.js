@@ -10,7 +10,7 @@ const {
   WATER_TENANTS,
   getLastWaterSubMeter, appendWaterBill, appendWaterMainBill,
   appendWaterPayment, appendWaterMainPaid, syncWaterMainBill, getWaterStatus, getWaterHistory, getWaterOverdue,
-  getLastWaterRate, getLastWaterSubUnits, appendWaterHouseBill,
+  getLastWaterRate, getLastWaterSubUnits, getOldestUnpaidWaterMonth, appendWaterHouseBill,
   updateRange, getValues,
 } = require('./sheets');
 
@@ -1178,7 +1178,7 @@ app.post('/webhook', async (req, res) => {
         if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ', QR_GUIDED); continue; }
         SESSION.delete(userId);
         const { tenant } = sess;
-        const month = new Date().toISOString().slice(0, 7);
+        const month = await getOldestUnpaidWaterMonth(tenant);
         await appendWaterPayment(tenant, month, amt);
         const wStatus = await getWaterStatus();
         const balance = wStatus.tenants[tenant]?.balance || 0;
@@ -1195,7 +1195,7 @@ app.post('/webhook', async (req, res) => {
         if (mWater) {
           const tenant = mWater[1];
           const amount = parseInt(mWater[2].replace(/,/g, ''));
-          const month  = new Date().toISOString().slice(0, 7);
+          const month  = await getOldestUnpaidWaterMonth(tenant);
           await appendWaterPayment(tenant, month, amount);
           const wStatus = await getWaterStatus();
           const balance = wStatus.tenants[tenant]?.balance || 0;
