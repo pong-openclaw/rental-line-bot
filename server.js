@@ -10,7 +10,7 @@ const {
   WATER_TENANTS,
   getLastWaterSubMeter, appendWaterBill, appendWaterMainBill,
   appendWaterPayment, appendWaterMainPaid, syncWaterMainBill, getWaterStatus, getWaterHistory, getWaterOverdue,
-  getLastWaterRate, appendWaterHouseBill,
+  getLastWaterRate, getLastWaterSubUnits, appendWaterHouseBill,
   updateRange, getValues,
 } = require('./sheets');
 
@@ -185,7 +185,7 @@ function thaiDate(iso) {
 function fmt(n) { return Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
 function buildWaterPreview(s) {
-  const { areeUnits, kaidamUnits, totalUnits, pwaBill, meeUnits, meeStandalone, calcRate, lastRate, month, rate } = s;
+  const { areeUnits, kaidamUnits, totalUnits, pwaBill, meeUnits, meeStandalone, calcRate, lastRate, lastSubUnits, isNear, month, rate } = s;
   const areeAmt   = areeUnits * rate;
   const kaidamAmt = kaidamUnits * rate;
   const meeAmt    = +(pwaBill - areeAmt - kaidamAmt).toFixed(2);
@@ -195,6 +195,7 @@ function buildWaterPreview(s) {
   const monthThai = TH_M[parseInt(mm)] + ' ' + (parseInt(my) + 543);
   let note = '';
   if (lastRate && lastRate !== calcRate) note = `\n\n💡 สูตร: ฿${calcRate}/หน่วย | เดือนที่แล้ว: ฿${lastRate}/หน่วย`;
+  if (isNear) note += `\n📊 หน่วยใกล้เคียงเดือนก่อน (${lastSubUnits}→${areeUnits + kaidamUnits} หน่วย) → แนะนำคงอัตราเดิม`;
   return `💧 ตัวอย่างบิลประปา ${monthThai}\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
     `📊 PWA รวม ${totalUnits} หน่วย: ฿${fmt(pwaBill)}\n\n` +
@@ -1061,22 +1062,26 @@ app.post('/webhook', async (req, res) => {
         const meeUnits    = totalUnits - subUnits;
         const meeStandalone = pwaStandalone(meeUnits);
         const calcRate    = Math.floor((pwaBill - meeStandalone) / subUnits);
-        const lastRate    = await getLastWaterRate();
+        const [lastRate, lastSubUnits] = await Promise.all([getLastWaterRate(), getLastWaterSubUnits()]);
+        const nearPct     = lastSubUnits ? Math.abs(subUnits - lastSubUnits) / lastSubUnits : null;
+        const isNear      = !!(lastRate && nearPct !== null && nearPct <= 0.15);
+        const defaultRate = isNear ? lastRate : calcRate;
         const today       = new Date().toISOString().slice(0, 10);
         const month       = today.slice(0, 7);
         const dueD        = new Date(today); dueD.setDate(dueD.getDate() + 7);
         const dueDateStr  = dueD.toISOString().slice(0, 10);
         const newSess = {
-          step: 'water_bill_preview', activeRate: calcRate,
+          step: 'water_bill_preview', activeRate: defaultRate,
           prevAree, areeMeter, areeUnits, prevKaidam, kaidamMeter, kaidamUnits,
-          subUnits, meeUnits, totalUnits, pwaBill, meeStandalone, calcRate, lastRate,
+          subUnits, meeUnits, totalUnits, pwaBill, meeStandalone, calcRate, lastRate, lastSubUnits, isNear,
           month, today, dueDateStr,
         };
         SESSION.set(userId, newSess);
-        const preview = buildWaterPreview({ ...newSess, rate: calcRate });
+        const preview = buildWaterPreview({ ...newSess, rate: defaultRate });
         const qr = { items: [
-          { type:'action', action:{ type:'message', label:`✅ ยืนยัน ฿${calcRate}/หน่วย`,          text:'ยืนยันบันทึกน้ำ' } },
-          ...(lastRate && lastRate !== calcRate ? [{ type:'action', action:{ type:'message', label:`↩️ คง ฿${lastRate}/หน่วย`, text:'ใช้อัตราเดิมน้ำ' } }] : []),
+          { type:'action', action:{ type:'message', label:`✅ ยืนยัน ฿${defaultRate}/หน่วย`,        text:'ยืนยันบันทึกน้ำ' } },
+          ...(lastRate && lastRate !== defaultRate ? [{ type:'action', action:{ type:'message', label:`↩️ คง ฿${lastRate}/หน่วย`, text:'ใช้อัตราเดิมน้ำ' } }] : []),
+          ...(calcRate !== defaultRate ? [{ type:'action', action:{ type:'message', label:`🔄 สูตร ฿${calcRate}/หน่วย`, text:'ใช้สูตรน้ำ' } }] : []),
           { type:'action', action:{ type:'message', label:'✏️ แก้อัตรา',                           text:'แก้อัตราน้ำ' } },
           { type:'action', action:{ type:'message', label:'❌ ยกเลิก',                              text:'ยกเลิก' } },
         ]};

@@ -417,6 +417,14 @@ async function getLastWaterRate() {
   return last[5] ? Math.round(parseFloat(last[5])) : null;
 }
 
+async function getLastWaterSubUnits() {
+  const rows = await getValues('น้ำ_พ่วง!A:I');
+  const bills = rows.filter(r => r[0] && r[0] !== 'เดือน');
+  if (!bills.length) return null;
+  const lastMonth = bills[bills.length - 1][0];
+  return bills.filter(r => r[0] === lastMonth).reduce((s, r) => s + (parseInt(r[4]) || 0), 0);
+}
+
 async function appendWaterHouseBill(month, totalUnits, pwaBill) {
   const date    = new Date().toISOString().slice(0, 10);
   const rateAvg = +(pwaBill / totalUnits).toFixed(2);
@@ -438,5 +446,5 @@ module.exports = {
   WATER_TENANTS,
   getLastWaterSubMeter, appendWaterBill, appendWaterMainBill,
   appendWaterPayment, appendWaterMainPaid, syncWaterMainBill, getWaterStatus, getWaterHistory, getWaterOverdue,
-  getLastWaterRate, appendWaterHouseBill,
+  getLastWaterRate, getLastWaterSubUnits, appendWaterHouseBill,
 };
