@@ -1491,6 +1491,13 @@ app.get('/debug-water', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/debug-audit-log', async (req, res) => {
+  try {
+    const rows = await getValues('AuditLog!A:C');
+    res.json({ rows: rows.slice(-50) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/debug-rubber', async (req, res) => {
   try {
     const crypto = require('crypto');
