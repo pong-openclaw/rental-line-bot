@@ -148,10 +148,10 @@ function pwaStandalone(units) {
 
 // ── Parsers ───────────────────────────────────────────────────────────────────
 const ROOMS = {
-  'คอนโด':  { key: 'คอนโด',  rent: 10000, pattern: /คอนโด|kiara|10[,.]?000/i },
-  'ห้อง 3': { key: 'ห้อง 3', rent: 8000,  pattern: /ห้อง\s*3|สานิตย์|8[,.]?000/i },
-  'ห้อง 1': { key: 'ห้อง 1', rent: 3500,  pattern: /ห้อง\s*1|3[,.]?500/i },
-  'ห้อง 2': { key: 'ห้อง 2', rent: 1000,  pattern: /ห้อง\s*2(?!0)|(?<!\d)1[,.]?000(?!\d)/i },
+  'คอนโด':  { key: 'คอนโด',  rent: 10000, dueDay: 21, pattern: /คอนโด|kiara|10[,.]?000/i },
+  'ห้อง 3': { key: 'ห้อง 3', rent: 8000,  dueDay: 5,  pattern: /ห้อง\s*3|สานิตย์|8[,.]?000/i },
+  'ห้อง 1': { key: 'ห้อง 1', rent: 3500,  dueDay: 16, pattern: /ห้อง\s*1|3[,.]?500/i },
+  'ห้อง 2': { key: 'ห้อง 2', rent: 1000,  dueDay: 5,  pattern: /ห้อง\s*2(?!0)|(?<!\d)1[,.]?000(?!\d)/i },
 };
 
 function detectRoom(text) {
@@ -1828,12 +1828,15 @@ cron.schedule('0 2 6 * *', async () => {
   } catch (e) { console.error('Cron bank error:', e.message); }
 });
 
-// วันที่ 10 เวลา 09:00 ไทย — แจ้งเตือนค่าเช่าค้าง
-cron.schedule('0 2 10 * *', async () => {
+// ทุกวัน เวลา 09:00 ไทย — แจ้งเตือนค่าเช่าค้าง เฉพาะห้องที่ครบกำหนดวันนั้น (dueDay ต่างกันตามห้อง)
+cron.schedule('0 2 * * *', async () => {
   if (!OWNER_ID) return;
   try {
+    const todayDay = new Date().getDate();
+    const dueToday = Object.entries(ROOMS).filter(([, info]) => info.dueDay === todayDay);
+    if (dueToday.length === 0) return; // วันนี้ไม่มีห้องไหนครบกำหนด
     const summary = await getMonthlySummary();
-    const expected = Object.fromEntries(Object.entries(ROOMS).map(([r, info]) => [r, info.rent]));
+    const expected = Object.fromEntries(dueToday.map(([r, info]) => [r, info.rent]));
     const unpaid = Object.entries(expected).filter(([r, a]) => (summary.byRoom[r] || 0) < a);
     if (unpaid.length === 0) return; // ไม่มีค้าง ไม่ต้องแจ้ง
     const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
