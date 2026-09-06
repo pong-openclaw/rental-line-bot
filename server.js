@@ -3,6 +3,7 @@ const crypto  = require('crypto');
 const {
   appendRent, appendWaterElec, getLastMeters, getRecentIncome, getAllIncome,
   getMonthlySummary, getLastWaterElecBill, getAllWaterElecBills, isWaterBillPaid,
+  getOldestUnpaidRentMonth, getRentArrears, getRentHistory,
   appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber,
   appendRubberExpense, getRubberExpenseSummary, getRecentRubberExpenses,
   BANK_MEMBERS, BANK_MONTHLY,
@@ -356,7 +357,7 @@ app.post('/webhook', async (req, res) => {
       }
 
       // ── ตั้ง section ตามเมนูที่กด ────────────────────────────────────────────
-      if (/^ห้องเช่า|รับเงิน|ค่าเช่า|ยอดค้าง|สรุป|ประวัติรายรับ|บันทึกมิเตอร์$/i.test(text)) SECTION.set(userId, 'rental');
+      if (/^ห้องเช่า|รับเงิน|ค่าเช่า|ยอดค้าง|สรุป|ประวัติรายรับ|ประวัติเช่า|บันทึกมิเตอร์$/i.test(text)) SECTION.set(userId, 'rental');
       else if (/^สวนยาง|ขายยาง|เบิกเงิน|คืนเงิน|ยอดค้างไท|ประวัติยาง|สรุปยาง|ค่าปุ๋ย|ค่าน้ำมัน$/i.test(text)) SECTION.set(userId, 'rubber');
       else if (/^หนี้บ้าน|รับเงินหนี้บ้าน|เลือกรับเงิน|ยอดค้างบ้าน|ส่งธนาคารแล้ว|ประวัติหนี้บ้าน$/i.test(text)) SECTION.set(userId, 'bank');
       else if (/^น้ำพ่วง|ออกบิลประปา|บันทึกน้ำพ่วง|ยอดค้างน้ำ|จ่ายหมี่แล้ว|ประวัติน้ำอารี|ประวัติน้ำไข่ดำ|บิลอารีล่าสุด|บิลไข่ดำล่าสุด|รับเงินน้ำอารี|รับเงินน้ำไข่ดำ$/i.test(text)) SECTION.set(userId, 'water');
@@ -413,6 +414,30 @@ app.post('/webhook', async (req, res) => {
           return `  ${r[0]} · ${r[1]}${type} · ฿${(+r[3]).toLocaleString('th-TH')}`;
         }).join('\n');
         await reply(rt, `📋 ประวัติรายรับล่าสุด\n\n${lines}`, QR_RENTAL);
+        continue;
+      }
+
+      // ── ประวัติเช่ารายห้อง (แสดงเฉพาะเดือนที่ tag แล้ว หลังเริ่มระบบ month-tracking) ──
+      if (/^ประวัติเช่า/i.test(text)) {
+        const room = detectRoom(text);
+        if (!room) { await reply(rt, '❌ ระบุห้องด้วยครับ เช่น "ประวัติเช่าห้อง3" หรือ "ประวัติเช่าคอนโด"', QR_RENTAL); continue; }
+        const [history, arrears] = await Promise.all([
+          getRentHistory(room, 6),
+          getRentArrears(room, ROOMS[room].rent),
+        ]);
+        if (history.length === 0) {
+          await reply(rt, `📜 ${room} — ยังไม่มีประวัติที่ระบบติดตามเดือน (เริ่มนับตั้งแต่การรับเงินครั้งถัดไป)`, QR_RENTAL);
+          continue;
+        }
+        const lines = history.map(h => {
+          const status = h.paid >= ROOMS[room].rent ? '✅' : '❌';
+          return `  ${status} ${h.month} — ฿${h.paid.toLocaleString('th-TH')} / ฿${ROOMS[room].rent.toLocaleString('th-TH')}`;
+        }).join('\n');
+        await reply(rt,
+          `📜 ประวัติค่าเช่า${room}\n\n${lines}` +
+          (arrears.monthsOwed > 0 ? `\n\n⚠️ ค้างสะสม ${arrears.monthsOwed} เดือน รวม ฿${arrears.totalOwed.toLocaleString('th-TH')}` : '\n\n🎉 ไม่มีค้าง'),
+          QR_RENTAL
+        );
         continue;
       }
 
@@ -649,6 +674,13 @@ app.post('/webhook', async (req, res) => {
                           : `❌ ${room} — ฿${amt.toLocaleString('th-TH')} ยังไม่ได้รับ`;
         });
         let unpaid = Object.entries(expected).filter(([r, a]) => (paid[r] || 0) < a).reduce((s, [, a]) => s + a, 0);
+        // ยอดค้างสะสมข้ามเดือน (นับตั้งแต่เริ่มระบบ month-tracking)
+        const arrearsResults = await Promise.all(
+          Object.entries(expected).map(async ([room, amt]) => [room, await getRentArrears(room, amt)])
+        );
+        const arrearsLines = arrearsResults
+          .filter(([, a]) => a.monthsOwed > 1)
+          .map(([room, a]) => `   ⚠️ ${room} ค้างสะสม ${a.monthsOwed} เดือน รวม ฿${a.totalOwed.toLocaleString('th-TH')}`);
         // ตรวจสอบบิลค่าน้ำไฟ
         let waterLine = '';
         if (bill) {
@@ -667,6 +699,7 @@ app.post('/webhook', async (req, res) => {
           `⏰ ยอดค้างเดือน${monthName}\n\n`
           + lines.join('\n')
           + (waterLine ? '\n' + waterLine : '')
+          + (arrearsLines.length ? '\n\n' + arrearsLines.join('\n') : '')
           + (unpaid > 0 ? `\n\n💰 รอรับอีก: ฿${unpaid.toLocaleString('th-TH')}` : '\n\n🎉 รับครบแล้ว!'),
           QR_RENTAL
         );
@@ -765,8 +798,10 @@ app.post('/webhook', async (req, res) => {
         const date   = detectDate(text);
 
         if (room && amount) {
-          await appendRent([date, room, 'ค่าเช่า', amount, 'รับแล้ว', '']);
-          await reply(rt, `✅ บันทึกค่าเช่า${room} ฿${amount.toLocaleString('th-TH')} วันที่ ${thaiDate(date)} แล้วครับ`, QR_INCOME);
+          const expectedAmt = ROOMS[room]?.rent || amount;
+          const billMonth   = await getOldestUnpaidRentMonth(room, expectedAmt);
+          await appendRent([date, room, 'ค่าเช่า', amount, 'รับแล้ว', billMonth]);
+          await reply(rt, `✅ บันทึกค่าเช่า${room} ฿${amount.toLocaleString('th-TH')} วันที่ ${thaiDate(date)} แล้วครับ\n(ตัดยอดเดือน ${thaiMonth(billMonth + '-01')})`, QR_INCOME);
         } else {
           await reply(rt,
             `⚠️ ระบุห้องหรือจำนวนไม่ได้ ลองใหม่ครับ เช่น:\n`

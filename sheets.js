@@ -92,6 +92,58 @@ async function getAllIncome() {
   return rows.filter(r => r[0] && r[0] !== 'วันที่');
 }
 
+function nextMonthStr(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m, 1); // m คือเดือนถัดไป (0-indexed เท่ากับเดือนปัจจุบัน+1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// รวมยอดค่าเช่าที่ tag เดือนแล้ว (เฉพาะข้อมูลตั้งแต่เริ่มระบบ month-tracking) ต่อเดือนของห้องนั้น
+async function _getRentPaidByMonth(room) {
+  const rows = await getValues('รายรับ!A:F');
+  const data = rows.filter(r => r[0] && r[0] !== 'วันที่' && r[1] === room && r[2] === 'ค่าเช่า' && r[5]);
+  const paidByMonth = {};
+  data.forEach(r => { paidByMonth[r[5]] = (paidByMonth[r[5]] || 0) + (parseFloat(r[3]) || 0); });
+  return paidByMonth;
+}
+
+async function getOldestUnpaidRentMonth(room, expectedAmount) {
+  const paidByMonth  = await _getRentPaidByMonth(room);
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const months = Object.keys(paidByMonth).sort();
+  if (!months.length) return currentMonth;
+  let cursor = months[0];
+  while (cursor <= currentMonth) {
+    if ((paidByMonth[cursor] || 0) < expectedAmount) return cursor;
+    cursor = nextMonthStr(cursor);
+  }
+  return currentMonth;
+}
+
+async function getRentArrears(room, expectedAmount) {
+  const paidByMonth  = await _getRentPaidByMonth(room);
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const months = Object.keys(paidByMonth).sort();
+  if (!months.length) return { monthsOwed: 0, totalOwed: 0, months: [] };
+  const owedMonths = [];
+  let cursor = months[0];
+  while (cursor <= currentMonth) {
+    const paid = paidByMonth[cursor] || 0;
+    if (paid < expectedAmount) owedMonths.push({ month: cursor, owed: +(expectedAmount - paid).toFixed(2) });
+    cursor = nextMonthStr(cursor);
+  }
+  const totalOwed = +owedMonths.reduce((s, m) => s + m.owed, 0).toFixed(2);
+  return { monthsOwed: owedMonths.length, totalOwed, months: owedMonths };
+}
+
+async function getRentHistory(room, n = 6) {
+  const paidByMonth = await _getRentPaidByMonth(room);
+  return Object.entries(paidByMonth)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-n)
+    .map(([month, paid]) => ({ month, paid }));
+}
+
 async function getMonthlySummary() {
   const rows = await getValues('รายรับ!A:F');
   const data = rows.filter(r => r[0] && r[0] !== 'วันที่');
@@ -463,6 +515,7 @@ module.exports = {
   // ห้องเช่า
   appendRent, appendWaterElec, getLastMeters, getRecentIncome, getAllIncome,
   getMonthlySummary, getLastWaterElecBill, getAllWaterElecBills, isWaterBillPaid,
+  getOldestUnpaidRentMonth, getRentArrears, getRentHistory,
   // สวนยาง
   appendRubberSale, getWorkerBalance, appendDebtRecord, getRubberSummary, getRecentRubber,
   appendRubberExpense, getRubberExpenseSummary, getRecentRubberExpenses,
