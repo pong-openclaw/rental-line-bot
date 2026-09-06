@@ -1816,13 +1816,9 @@ cron.schedule('0 2 6 * *', async () => {
       return b <= 0 ? `✅ ${n} — ชำระครบแล้ว` : `❌ ${n} — ค้าง ฿${fmt(b)}`;
     });
     if (!status.bankSent) lines.push(`⏳ ยังไม่ได้ส่งธนาคาร`);
-    const actionQR = { items: [
-      ...unpaid.map(n => ({ type:'action', action:{ type:'message', label:`✅ ${n}`, text:`เลือกรับเงิน ${n}` } })),
-      ...QR_BANK.items,
-    ]};
     await push(OWNER_ID,
       `⚠️ แจ้งเตือนหนี้บ้าน ธอส. — ${monthName}\n\n${lines.join('\n')}\n\nกรุณาติดตามการชำระเงินครับ`,
-      actionQR
+      QR_BANK
     );
     console.log('🔔 Cron: ส่งแจ้งเตือนหนี้บ้านแล้ว');
   } catch (e) { console.error('Cron bank error:', e.message); }
@@ -1845,16 +1841,9 @@ cron.schedule('0 2 * * *', async () => {
       const paid = summary.byRoom[r] || 0;
       return `❌ ${r} — ค้าง ฿${fmt(a - paid)}`;
     }).join('\n');
-    const actionQR = { items: [
-      ...unpaid.map(([r, a]) => {
-        const owed = a - (summary.byRoom[r] || 0);
-        return { type:'action', action:{ type:'message', label:`✅ ${r}`, text:`รับค่าเช่า${r.replace(/\s+/g, '')} ${owed}` } };
-      }),
-      ...QR_RENTAL.items,
-    ]};
     await push(OWNER_ID,
       `⚠️ แจ้งเตือนค่าเช่า — ${monthName}\n\n${lines}\n\nกรุณาติดตามการชำระเงินครับ`,
-      actionQR
+      QR_RENTAL
     );
     console.log('🔔 Cron: ส่งแจ้งเตือนค่าเช่าแล้ว');
   } catch (e) { console.error('Cron rent error:', e.message); }
@@ -1875,14 +1864,9 @@ cron.schedule('0 2 14 * *', async () => {
       return b <= 0 ? `✅ ${t} — ชำระครบแล้ว` : `❌ ${t} — ค้าง ฿${fmt(b)}`;
     });
     if (hasUnpaidMain) lines.push(`⏳ ยังไม่จ่ายหมี่ ฿${fmt(wStatus.lastMain.totalAmount)}`);
-    const actionQR = { items: [
-      ...unpaidTenants.map(t => ({ type:'action', action:{ type:'message', label:`✅ ${t}`, text:`รับเงินน้ำ${t}` } })),
-      ...(hasUnpaidMain ? [{ type:'action', action:{ type:'message', label:'✅ จ่ายหมี่แล้ว', text:'จ่ายหมี่แล้ว' } }] : []),
-      ...QR_WATER.items,
-    ]};
     await push(OWNER_ID,
       `⚠️ แจ้งเตือนค่าน้ำพ่วง — ${monthName}\n\n${lines.join('\n')}\n\nกรุณาติดตามการชำระเงินครับ`,
-      actionQR
+      QR_WATER
     );
     console.log('🔔 Cron: ส่งแจ้งเตือนค่าน้ำแล้ว');
   } catch (e) { console.error('Cron water error:', e.message); }
