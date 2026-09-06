@@ -1424,6 +1424,23 @@ app.get('/setup-richmenu', async (req, res) => {
   } catch (e) { res.status(500).send('❌ ' + e.message); }
 });
 
+app.get('/fix-water-main-paid-month', async (req, res) => {
+  try {
+    const main = await getValues('น้ำ_บิลหลัก!A:F');
+    const results = [];
+    for (let i = 0; i < main.length; i++) {
+      const r = main[i];
+      if (r[1] === '2026-09_paid') {
+        const newRow = [r[0], '2026-08_paid', r[2], r[3], r[4], r[5] || ''];
+        const rowNum = i + 1;
+        const upd = await updateRange(`น้ำ_บิลหลัก!A${rowNum}:F${rowNum}`, newRow, undefined);
+        results.push({ rowNum, old: r, newRow, upd: upd.updatedCells });
+      }
+    }
+    res.json({ ok: true, results });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 app.get('/debug-water', async (req, res) => {
   try {
