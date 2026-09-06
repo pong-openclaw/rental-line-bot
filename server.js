@@ -668,7 +668,7 @@ app.post('/webhook', async (req, res) => {
         const monthName = THAI_MONTHS[now.getMonth() + 1];
         const [summary, bill] = await Promise.all([getMonthlySummary(), getLastWaterElecBill()]);
         const paid = summary.byRoom || {};
-        const expected = { 'ห้อง 1': 3500, 'ห้อง 2': 1000, 'ห้อง 3': 8000, 'คอนโด': 10000 };
+        const expected = Object.fromEntries(Object.entries(ROOMS).map(([r, info]) => [r, info.rent]));
         const lines = Object.entries(expected).map(([room, amt]) => {
           const p = paid[room] || 0;
           return p >= amt ? `✅ ${room} — ฿${amt.toLocaleString('th-TH')} รับแล้ว`
@@ -718,10 +718,17 @@ app.post('/webhook', async (req, res) => {
         const wePaid = weBill ? await isWaterBillPaid(weBill.month) : false;
 
         // 🏠 ห้องเช่า
-        const expected = { 'ห้อง 1': 3500, 'ห้อง 2': 1000, 'ห้อง 3': 8000, 'คอนโด': 10000 };
+        const expected = Object.fromEntries(Object.entries(ROOMS).map(([r, info]) => [r, info.rent]));
         const rentLines = Object.entries(expected).map(([r, a]) =>
           (sum.byRoom[r] || 0) >= a ? `  ✅ ${r} ฿${a.toLocaleString('th-TH')}` : `  ❌ ${r} ยังไม่รับ`
         ).join('\n');
+        const rentArrearsResults = await Promise.all(
+          Object.entries(expected).map(async ([room, amt]) => [room, await getRentArrears(room, amt)])
+        );
+        const rentArrearsLine = rentArrearsResults
+          .filter(([, a]) => a.monthsOwed > 1)
+          .map(([room, a]) => `  ⚠️ ${room} ค้างสะสม ${a.monthsOwed} เดือน ฿${fmt(a.totalOwed)}`)
+          .join('\n');
 
         // 🌿 สวนยาง
         const TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
@@ -773,6 +780,7 @@ app.post('/webhook', async (req, res) => {
           `📊 ภาพรวม — ${monthName}\n`
           + `━━━━━━━━━━━━━━━━━━━━\n`
           + `🏠 ห้องเช่า\n${rentLines}\n`
+          + (rentArrearsLine ? `${rentArrearsLine}\n` : '')
           + `${weLine}\n`
           + `  💰 รวม ฿${sum.total.toLocaleString('th-TH')}\n`
           + `\n🌿 สวนยาง (${rubberRows.length} รอบล่าสุด)\n${rubLines}\n`
@@ -1339,7 +1347,7 @@ app.post('/webhook', async (req, res) => {
         ]);
 
         // ── 🏠 ห้องเช่า: ตรวจ 3 เดือนย้อนหลัง ────────────────────────────────
-        const RENT_EXP = { 'ห้อง 1': 3500, 'ห้อง 2': 1000, 'ห้อง 3': 8000, 'คอนโด': 10000 };
+        const RENT_EXP = Object.fromEntries(Object.entries(ROOMS).map(([r, info]) => [r, info.rent]));
         const paidByMonth = {};
         for (const r of allIncome) {
           if (r[2] !== 'ค่าเช่า') continue;
@@ -1610,7 +1618,7 @@ app.get('/fix-rent-all', async (req, res) => {
     const { getValues, getToken } = require('./sheets');
     const token = await getToken();
     const SHEET_ID = '1IWF5gZ_w0EqbMu5uAHMF4w3I6PAgxbKb_aMeRQNDXgE';
-    const CORRECT = { 'ห้อง 1': 3500, 'ห้อง 2': 1000, 'ห้อง 3': 8000, 'คอนโด': 10000 };
+    const CORRECT = Object.fromEntries(Object.entries(ROOMS).map(([r, info]) => [r, info.rent]));
     const rows = await getValues('รายรับ!A:F');
     const fixed = [];
     for (let i = 1; i < rows.length; i++) {
@@ -1875,7 +1883,7 @@ cron.schedule('0 2 10 * *', async () => {
   if (!OWNER_ID) return;
   try {
     const summary = await getMonthlySummary();
-    const expected = { 'ห้อง 1': 3500, 'ห้อง 2': 1000, 'ห้อง 3': 8000, 'คอนโด': 10000 };
+    const expected = Object.fromEntries(Object.entries(ROOMS).map(([r, info]) => [r, info.rent]));
     const unpaid = Object.entries(expected).filter(([r, a]) => (summary.byRoom[r] || 0) < a);
     if (unpaid.length === 0) return; // ไม่มีค้าง ไม่ต้องแจ้ง
     const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
