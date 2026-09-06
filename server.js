@@ -1442,44 +1442,6 @@ app.get('/setup-richmenu', async (req, res) => {
   } catch (e) { res.status(500).send('❌ ' + e.message); }
 });
 
-app.get('/fix-water-duplicates', async (req, res) => {
-  try {
-    const { getToken } = require('./sheets');
-    const SHEET_ID = '1IWF5gZ_w0EqbMu5uAHMF4w3I6PAgxbKb_aMeRQNDXgE';
-    const token = await getToken();
-    const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets.properties`, { headers: { Authorization: `Bearer ${token}` } });
-    const meta = await metaRes.json();
-    const sheetIdByTitle = {};
-    for (const s of meta.sheets) sheetIdByTitle[s.properties.title] = s.properties.sheetId;
-
-    async function dedupe(tabName, range) {
-      const rows = await getValues(`${tabName}!${range}`);
-      const seen = new Set();
-      const dupRowIndices = [];
-      for (let i = 1; i < rows.length; i++) {
-        const key = JSON.stringify(rows[i]);
-        if (seen.has(key)) dupRowIndices.push(i);
-        else seen.add(key);
-      }
-      const sheetId = sheetIdByTitle[tabName];
-      const requests = dupRowIndices.sort((a, b) => b - a).map(i => ({
-        deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: i, endIndex: i + 1 } }
-      }));
-      if (requests.length) {
-        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`, {
-          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requests }),
-        });
-      }
-      return { tabName, deletedRowsInSheet: dupRowIndices.map(i => i + 1), count: dupRowIndices.length };
-    }
-
-    const houseResult = await dedupe('น้ำ_รวมบ้าน', 'A:D');
-    const nuanResult  = await dedupe('น้ำ_พี่นวล', 'A:D');
-    res.json({ ok: true, houseResult, nuanResult });
-  } catch (e) { res.status(500).json({ error: e.message, stack: e.stack }); }
-});
-
 app.get('/debug-water', async (req, res) => {
   try {
     const [sub, main, house, nuan, pay] = await Promise.all([
