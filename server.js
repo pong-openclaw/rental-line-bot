@@ -196,7 +196,7 @@ function thaiDate(iso) {
 function fmt(n) { return Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
 function buildWaterPreview(s) {
-  const { areeUnits, kaidamUnits, totalUnits, pwaBill, meeUnits, meeStandalone, calcRate, lastRate, lastSubUnits, isNear, month, rate } = s;
+  const { areeUnits, kaidamUnits, totalUnits, pwaBill, meeUnits, meeStandalone, calcRate, lastRate, lastSubUnits, isNear, rateWarning, month, rate } = s;
   const areeAmt   = areeUnits * rate;
   const kaidamAmt = kaidamUnits * rate;
   const meeAmt    = +(pwaBill - areeAmt - kaidamAmt).toFixed(2);
@@ -207,6 +207,7 @@ function buildWaterPreview(s) {
   let note = '';
   if (lastRate && lastRate !== calcRate) note = `\n\n💡 สูตร: ฿${calcRate}/หน่วย | เดือนที่แล้ว: ฿${lastRate}/หน่วย`;
   if (isNear) note += `\n📊 หน่วยใกล้เคียงเดือนก่อน (${lastSubUnits}→${areeUnits + kaidamUnits} หน่วย) → แนะนำคงอัตราเดิม`;
+  if (rateWarning) note += `\n\n⚠️ อัตราจากสูตรผิดปกติ (฿${calcRate}/หน่วย) กรุณาตรวจสอบหน่วย/ยอด PWA ที่กรอกก่อนยืนยัน`;
   return `💧 ตัวอย่างบิลประปา ${monthThai}\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
     `📊 PWA รวม ${totalUnits} หน่วย: ฿${fmt(pwaBill)}\n\n` +
@@ -1070,9 +1071,15 @@ app.post('/webhook', async (req, res) => {
         const areeUnits   = areeMeter - prevAree;
         const kaidamUnits = kaidamMeter - prevKaidam;
         const subUnits    = areeUnits + kaidamUnits;
+        if (subUnits === 0) {
+          SESSION.delete(userId);
+          await reply(rt, `❌ อารี+ไข่ดำ ไม่มีการใช้น้ำเดือนนี้เลย (0 หน่วย) คำนวณอัตราไม่ได้\nกรุณาตรวจสอบมิเตอร์แล้วเริ่ม "ออกบิลประปา" ใหม่ครับ`, QR_WATER);
+          continue;
+        }
         const meeUnits    = totalUnits - subUnits;
         const meeStandalone = pwaStandalone(meeUnits);
         const calcRate    = Math.floor((pwaBill - meeStandalone) / subUnits);
+        const rateWarning = !Number.isFinite(calcRate) || calcRate < 0 || calcRate > 100;
         const [lastRate, lastSubUnits] = await Promise.all([getLastWaterRate(), getLastWaterSubUnits()]);
         const nearPct     = lastSubUnits ? Math.abs(subUnits - lastSubUnits) / lastSubUnits : null;
         const isNear      = !!(lastRate && nearPct !== null && nearPct <= 0.15);
@@ -1084,7 +1091,7 @@ app.post('/webhook', async (req, res) => {
         const newSess = {
           step: 'water_bill_preview', activeRate: defaultRate,
           prevAree, areeMeter, areeUnits, prevKaidam, kaidamMeter, kaidamUnits,
-          subUnits, meeUnits, totalUnits, pwaBill, meeStandalone, calcRate, lastRate, lastSubUnits, isNear,
+          subUnits, meeUnits, totalUnits, pwaBill, meeStandalone, calcRate, lastRate, lastSubUnits, isNear, rateWarning,
           month, today, dueDateStr,
         };
         SESSION.set(userId, newSess);
