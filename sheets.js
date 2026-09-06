@@ -312,9 +312,21 @@ async function appendWaterPayment(tenant, month, amount) {
   return appendToSheet('น้ำ_รับเงิน!A:E', [date, tenant, month, amount, '']);
 }
 
+async function getOldestUnpaidMainMonth() {
+  const rows = await getValues('น้ำ_บิลหลัก!A:F');
+  const mains = rows
+    .filter(r => r[0] && r[0] !== 'วันที่' && r[1] && !String(r[1]).includes('_paid'))
+    .sort((a, b) => a[1].localeCompare(b[1]));
+  const paidMonths = new Set(
+    rows.filter(r => r[1] && String(r[1]).includes('_paid')).map(r => String(r[1]).replace('_paid', ''))
+  );
+  const oldest = mains.find(r => !paidMonths.has(r[1]));
+  return oldest ? oldest[1] : new Date().toISOString().slice(0, 7);
+}
+
 async function appendWaterMainPaid(amount) {
   const date  = new Date().toISOString().slice(0, 10);
-  const month = date.slice(0, 7);
+  const month = await getOldestUnpaidMainMonth();
   return appendToSheet('น้ำ_บิลหลัก!A:F', [date, month + '_paid', 0, amount, 'จ่ายแล้ว', date]);
 }
 
