@@ -22,6 +22,17 @@ const SECRET = process.env.LINE_CHANNEL_SECRET;
 app.use('/webhook', express.raw({ type: '*/*' }));
 app.use(express.json());
 
+// ── ป้องกัน endpoint ทั้งหมด ต้องมี key ก่อนถึงจะเรียกได้ (default-deny) ──────────
+// อนุญาตแบบไม่ต้องมี key เฉพาะ webhook (มี signature verify แยกอยู่แล้ว) กับหน้า health check
+const PUBLIC_PATHS = new Set(['/webhook', '/']);
+app.use((req, res, next) => {
+  if (PUBLIC_PATHS.has(req.path)) return next();
+  const key = process.env.DEBUG_KEY;
+  if (!key) return res.status(500).send('❌ DEBUG_KEY ยังไม่ได้ตั้งค่าใน environment');
+  if (req.headers['x-debug-key'] !== key) return res.status(403).send('❌ Forbidden — ต้องใส่ header x-debug-key ให้ถูกต้อง');
+  next();
+});
+
 // ── LINE helpers ──────────────────────────────────────────────────────────────
 function verifySig(body, sig) {
   return crypto.createHmac('sha256', SECRET).update(body).digest('base64') === sig;
