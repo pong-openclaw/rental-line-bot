@@ -1816,9 +1816,13 @@ cron.schedule('0 2 6 * *', async () => {
       return b <= 0 ? `✅ ${n} — ชำระครบแล้ว` : `❌ ${n} — ค้าง ฿${fmt(b)}`;
     });
     if (!status.bankSent) lines.push(`⏳ ยังไม่ได้ส่งธนาคาร`);
+    const payQR = { items: [
+      ...unpaid.map(n => ({ type:'action', action:{ type:'message', label:`✅ ${n}`, text:`เลือกรับเงิน ${n}` } })),
+      ...(!status.bankSent ? [{ type:'action', action:{ type:'message', label:'✅ ส่งธนาคารแล้ว', text:'ส่งธนาคารแล้ว' } }] : []),
+    ]};
     await push(OWNER_ID,
       `⚠️ แจ้งเตือนหนี้บ้าน ธอส. — ${monthName}\n\n${lines.join('\n')}\n\nกรุณาติดตามการชำระเงินครับ`,
-      QR_BANK
+      payQR
     );
     console.log('🔔 Cron: ส่งแจ้งเตือนหนี้บ้านแล้ว');
   } catch (e) { console.error('Cron bank error:', e.message); }
@@ -1841,9 +1845,13 @@ cron.schedule('0 2 * * *', async () => {
       const paid = summary.byRoom[r] || 0;
       return `❌ ${r} — ค้าง ฿${fmt(a - paid)}`;
     }).join('\n');
+    const payQR = { items: unpaid.map(([r, a]) => {
+      const owed = a - (summary.byRoom[r] || 0);
+      return { type:'action', action:{ type:'message', label:`✅ ${r}`, text:`รับค่าเช่า${r.replace(/\s+/g, '')} ${owed}` } };
+    })};
     await push(OWNER_ID,
       `⚠️ แจ้งเตือนค่าเช่า — ${monthName}\n\n${lines}\n\nกรุณาติดตามการชำระเงินครับ`,
-      QR_RENTAL
+      payQR
     );
     console.log('🔔 Cron: ส่งแจ้งเตือนค่าเช่าแล้ว');
   } catch (e) { console.error('Cron rent error:', e.message); }
@@ -1864,9 +1872,13 @@ cron.schedule('0 2 14 * *', async () => {
       return b <= 0 ? `✅ ${t} — ชำระครบแล้ว` : `❌ ${t} — ค้าง ฿${fmt(b)}`;
     });
     if (hasUnpaidMain) lines.push(`⏳ ยังไม่จ่ายหมี่ ฿${fmt(wStatus.lastMain.totalAmount)}`);
+    const payQR = { items: [
+      ...unpaidTenants.map(t => ({ type:'action', action:{ type:'message', label:`✅ ${t}`, text:`รับเงินน้ำ${t}` } })),
+      ...(hasUnpaidMain ? [{ type:'action', action:{ type:'message', label:'✅ จ่ายหมี่แล้ว', text:'จ่ายหมี่แล้ว' } }] : []),
+    ]};
     await push(OWNER_ID,
       `⚠️ แจ้งเตือนค่าน้ำพ่วง — ${monthName}\n\n${lines.join('\n')}\n\nกรุณาติดตามการชำระเงินครับ`,
-      QR_WATER
+      payQR
     );
     console.log('🔔 Cron: ส่งแจ้งเตือนค่าน้ำแล้ว');
   } catch (e) { console.error('Cron water error:', e.message); }
@@ -1882,7 +1894,7 @@ cron.schedule('0 2 20 * *', async () => {
     const monthName = THAI_MONTHS[new Date().getMonth() + 1];
     await push(OWNER_ID,
       `⚠️ แจ้งเตือนสวนยาง — ${monthName}\n\n💳 ยอดเบิกไทค้าง: ฿${fmt(bal)}\n\nจะหักคืนตอนขายยางรอบหน้า หรือบันทึกคืนเงินได้เลยครับ`,
-      QR_RUBBER
+      { items: [{ type:'action', action:{ type:'message', label:'✅ บันทึกคืนเงิน', text:'คืนเงิน' } }] }
     );
     console.log('🔔 Cron: ส่งแจ้งเตือนสวนยางแล้ว');
   } catch (e) { console.error('Cron rubber error:', e.message); }
