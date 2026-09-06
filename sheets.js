@@ -442,24 +442,6 @@ async function getWaterHistory(tenant, n = 3) {
   }));
 }
 
-// sync main bill จากบิลย่อย (เรียกหลัง appendWaterBill รายคน)
-async function syncWaterMainBill(month) {
-  const [billRows, mainRows] = await Promise.all([
-    getValues('น้ำ_พ่วง!A:I'),
-    getValues('น้ำ_บิลหลัก!A:F'),
-  ]);
-  // รวม units+amount เดือนนี้
-  const monthBills = billRows.filter(r => r[0] === month && r[0] !== 'เดือน');
-  if (monthBills.length === 0) return;
-  const totalUnits  = monthBills.reduce((s, r) => s + (parseInt(r[4])  || 0), 0);
-  const totalAmount = monthBills.reduce((s, r) => s + (parseFloat(r[6]) || 0), 0);
-  // ถ้ามีบิลหลักของเดือนนี้แล้ว → ไม่ทำซ้ำ
-  const alreadyMain = mainRows.some(r => r[0] && r[0] !== 'วันที่' && r[1] === month);
-  if (alreadyMain) return;
-  const date = new Date().toISOString().slice(0, 10);
-  await appendToSheet('น้ำ_บิลหลัก!A:F', [date, month, totalUnits, totalAmount, 'ยังไม่จ่าย', '']);
-}
-
 async function getWaterOverdue() {
   const status = await getWaterStatus();
   const overdues = [];
@@ -510,6 +492,12 @@ async function appendWaterHouseBill(month, totalUnits, pwaBill) {
   return appendToSheet('น้ำ_รวมบ้าน!A:D', [date, +totalUnits, +pwaBill, rateAvg]);
 }
 
+// บันทึกทุกครั้งที่มีการเรียก endpoint ที่ต้องใช้ DEBUG_KEY (audit trail)
+async function appendAuditLog(method, path) {
+  const timestamp = new Date().toISOString();
+  return appendToSheet('AuditLog!A:C', [timestamp, method, path]);
+}
+
 module.exports = {
   getToken, getValues, updateRange, appendToSheet,
   // ห้องเช่า
@@ -525,6 +513,6 @@ module.exports = {
   // ค่าน้ำพ่วง
   WATER_TENANTS,
   getLastWaterSubMeter, appendWaterBill, appendWaterMainBill,
-  appendWaterPayment, appendWaterMainPaid, syncWaterMainBill, getWaterStatus, getWaterHistory, getWaterOverdue,
-  getLastWaterRate, getLastWaterSubUnits, getOldestUnpaidWaterMonth, appendWaterHouseBill,
+  appendWaterPayment, appendWaterMainPaid, getWaterStatus, getWaterHistory, getWaterOverdue,
+  getLastWaterRate, getLastWaterSubUnits, getOldestUnpaidWaterMonth, appendWaterHouseBill, appendAuditLog,
 };

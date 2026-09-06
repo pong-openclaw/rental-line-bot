@@ -10,8 +10,8 @@ const {
   appendBankPayment, appendBankSent, getBankStatus, getBankHistory, getBankOverdue,
   WATER_TENANTS,
   getLastWaterSubMeter, appendWaterBill, appendWaterMainBill,
-  appendWaterPayment, appendWaterMainPaid, syncWaterMainBill, getWaterStatus, getWaterHistory, getWaterOverdue,
-  getLastWaterRate, getLastWaterSubUnits, getOldestUnpaidWaterMonth, appendWaterHouseBill,
+  appendWaterPayment, appendWaterMainPaid, getWaterStatus, getWaterHistory, getWaterOverdue,
+  getLastWaterRate, getLastWaterSubUnits, getOldestUnpaidWaterMonth, appendWaterHouseBill, appendAuditLog,
   updateRange, getValues,
 } = require('./sheets');
 
@@ -31,6 +31,7 @@ app.use((req, res, next) => {
   const key = process.env.DEBUG_KEY;
   if (!key) return res.status(500).send('❌ DEBUG_KEY ยังไม่ได้ตั้งค่าใน environment');
   if (req.headers['x-debug-key'] !== key) return res.status(403).send('❌ Forbidden — ต้องใส่ header x-debug-key ให้ถูกต้อง');
+  appendAuditLog(req.method, req.path).catch(e => console.error('appendAuditLog error:', e.message));
   next();
 });
 
@@ -1789,6 +1790,35 @@ app.get('/create-water-reference-sheets', async (req, res) => {
     await appendToSheet('น้ำ_รวมบ้าน!A:D', ['2026-04-06', 95, 2243.5, 23.62]);
     await appendToSheet('น้ำ_รวมบ้าน!A:D', ['2026-05-07', 88, 2024, 23]);
     await appendToSheet('น้ำ_รวมบ้าน!A:D', ['2026-06-08', 54, 1173.15, 21.725]);
+
+    res.json({ ok: true, addSheet: addData.replies || 'already_exists' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/create-audit-log-sheet', async (req, res) => {
+  try {
+    const { getToken } = require('./sheets');
+    const token = await getToken();
+    const SHEET_ID = '1IWF5gZ_w0EqbMu5uAHMF4w3I6PAgxbKb_aMeRQNDXgE';
+
+    const addRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'AuditLog' } } }] })
+      }
+    );
+    const addData = await addRes.json();
+    if (!addRes.ok && !addData.error?.message?.includes('already exists')) {
+      return res.status(500).json({ error: 'addSheet failed', addData });
+    }
+
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent('AuditLog!A1')}?valueInputOption=RAW`,
+      { method: 'PUT', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [['เวลา', 'Method', 'Path']], majorDimension: 'ROWS' }) }
+    );
 
     res.json({ ok: true, addSheet: addData.replies || 'already_exists' });
   } catch (e) { res.status(500).json({ error: e.message }); }
