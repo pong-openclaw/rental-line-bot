@@ -1424,40 +1424,6 @@ app.get('/setup-richmenu', async (req, res) => {
   } catch (e) { res.status(500).send('❌ ' + e.message); }
 });
 
-app.get('/fix-water-july-main', async (req, res) => {
-  try {
-    const { appendToSheet } = require('./sheets');
-    const main = await getValues('น้ำ_บิลหลัก!A:F');
-    const idx = main.findIndex(r => r[1] === '2026-07');
-    if (idx === -1) return res.json({ error: 'ไม่พบแถว 2026-07' });
-    const old = main[idx];
-    const newRow = [old[0], '2026-07', 30, 690, old[4], old[5] || ''];
-    const rowNum = idx + 1;
-    const upd = await updateRange(`น้ำ_บิลหลัก!A${rowNum}:F${rowNum}`, newRow, undefined);
-    const paidDate = '2026-08-12';
-    const appendResult = await appendToSheet('น้ำ_บิลหลัก!A:F', [paidDate, '2026-07_paid', 0, 690, 'จ่ายแล้ว', paidDate]);
-    res.json({ ok: true, rowNum, old, newRow, updatedCells: upd.updatedCells, appendResult });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/fix-water-main-paid-month', async (req, res) => {
-  try {
-    const main = await getValues('น้ำ_บิลหลัก!A:F');
-    const results = [];
-    for (let i = 0; i < main.length; i++) {
-      const r = main[i];
-      if (r[1] === '2026-09_paid') {
-        const newRow = [r[0], '2026-08_paid', r[2], r[3], r[4], r[5] || ''];
-        const rowNum = i + 1;
-        const upd = await updateRange(`น้ำ_บิลหลัก!A${rowNum}:F${rowNum}`, newRow, undefined);
-        results.push({ rowNum, old: r, newRow, upd: upd.updatedCells });
-      }
-    }
-    res.json({ ok: true, results });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-
 app.get('/debug-water', async (req, res) => {
   try {
     const [sub, main, house, nuan, pay] = await Promise.all([
