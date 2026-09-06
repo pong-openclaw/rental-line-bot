@@ -1346,26 +1346,18 @@ app.post('/webhook', async (req, res) => {
           getAllWaterElecBills()
         ]);
 
-        // ── 🏠 ห้องเช่า: ตรวจ 3 เดือนย้อนหลัง ────────────────────────────────
-        const RENT_EXP = Object.fromEntries(Object.entries(ROOMS).map(([r, info]) => [r, info.rent]));
-        const paidByMonth = {};
-        for (const r of allIncome) {
-          if (r[2] !== 'ค่าเช่า') continue;
-          const m = r[0].slice(0,7);
-          if (!paidByMonth[m]) paidByMonth[m] = {};
-          paidByMonth[m][r[1]] = (paidByMonth[m] [r[1]] || 0) + (+r[3] || 0);
-        }
+        // ── 🏠 ห้องเช่า: ใช้ getRentArrears ตัวเดียวกับ "ยอดค้าง"/"ภาพรวม" ──────
+        const RENT_EXP    = Object.fromEntries(Object.entries(ROOMS).map(([r, info]) => [r, info.rent]));
+        const currentMonth = today.toISOString().slice(0, 7);
+        const rentArrearsAll = await Promise.all(
+          Object.entries(RENT_EXP).map(async ([room, amt]) => [room, await getRentArrears(room, amt)])
+        );
         const rentOverdue = [];
-        for (let i = 0; i <= 2; i++) {
-          const d  = new Date(today.getFullYear(), today.getMonth() - i, 1);
-          const m  = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-          const mn = THAI_MONTHS_F[d.getMonth()+1];
-          if (i === 0 && todayDay <= 5) continue; // ยังไม่ถึงกำหนด (ก่อนวันที่ 6)
-          const paid = paidByMonth[m] || {};
-          for (const [room, amt] of Object.entries(RENT_EXP)) {
-            if ((paid[room] || 0) < amt) {
-              rentOverdue.push(`  ❌ ${room} ฿${(amt-(paid[room]||0)).toLocaleString('th-TH')} (${mn})`);
-            }
+        for (const [room, arrears] of rentArrearsAll) {
+          for (const m of arrears.months) {
+            if (m.month === currentMonth && todayDay <= 5) continue; // ยังไม่ถึงกำหนด (ก่อนวันที่ 6)
+            const mn = THAI_MONTHS_F[parseInt(m.month.split('-')[1], 10)];
+            rentOverdue.push(`  ❌ ${room} ฿${m.owed.toLocaleString('th-TH')} (${mn})`);
           }
         }
 
