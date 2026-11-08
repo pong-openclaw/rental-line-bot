@@ -261,6 +261,7 @@ async function getRecentRubberExpenses(n = 5) {
 // หนี้_ส่งธนาคาร!A:D → วันที่ | เดือน | ยอด  | หมายเหตุ
 
 const BANK_START   = '2026-04'; // เดือนแรกที่เริ่มบันทึก
+const BANK_SENT_START = '2026-05'; // เดือนแรกที่มีบันทึกส่งธนาคารในชีต (เม.ย. ส่งแล้วแต่ไม่ได้บันทึก)
 const BANK_MONTHLY = 3575;
 const BANK_MEMBERS = ['พี่หมา', 'พี่แมว', 'พี่อ๊อด', 'อู๊ด'];
 
@@ -302,12 +303,20 @@ async function getBankStatus() {
     members[name]  = { allPaid, thisPaid, balance };
   }
 
+  // ยอดส่งธนาคาร: ต้องส่งเดือนละ BANK_MONTHLY × จำนวนสมาชิก คิดสะสมตั้งแต่ BANK_SENT_START
+  // (ส่งขาดเดือนไหนจะไม่หาย ส่งเกินจะหักยอดเดือนถัดไป)
+  const bankRequired   = BANK_MONTHLY * BANK_MEMBERS.length;
   const sentThisMonth  = sentData.filter(r => r[1] === currentMonth);
-  const bankSent       = sentThisMonth.length > 0;
   const bankSentAmount = sentThisMonth.reduce((s, r) => s + (parseFloat(r[2]) || 0), 0);
+  const sentSinceStart = sentData
+    .filter(r => r[1] >= BANK_SENT_START)
+    .reduce((s, r) => s + (parseFloat(r[2]) || 0), 0);
+  const sentRequired   = monthsCount(BANK_SENT_START, currentMonth) * bankRequired;
+  const bankRemaining  = Math.max(0, +(sentRequired - sentSinceStart).toFixed(2));
+  const bankSent       = bankRemaining <= 0;
   const totalCollected = Object.values(members).reduce((s, m) => s + m.thisPaid, 0);
 
-  return { members, bankSent, bankSentAmount, totalCollected, currentMonth };
+  return { members, bankSent, bankSentAmount, bankRequired, bankRemaining, totalCollected, currentMonth };
 }
 
 async function getBankHistory(n = 3) {
@@ -328,7 +337,7 @@ async function getBankOverdue() {
   for (const [name, info] of Object.entries(status.members)) {
     if (info.balance > 0) overdues.push(`  ${name}: ค้าง ฿${info.balance.toLocaleString('th-TH')}`);
   }
-  if (!status.bankSent) overdues.push('  ⚠️ ยังไม่ได้ส่งธนาคาร');
+  if (status.bankRemaining > 0) overdues.push(`  ⚠️ ค้างส่งธนาคาร ฿${status.bankRemaining.toLocaleString('th-TH')}`);
   return overdues;
 }
 

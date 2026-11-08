@@ -197,6 +197,22 @@ function thaiDate(iso) {
 }
 function fmt(n) { return Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
+// สรุปสถานะส่งธนาคาร (ส่งจริงเท่าไร / ค้างส่งเท่าไร) ใช้ร่วมกันทุกหน้าจอ
+function bankSendSummary(s, indent = '') {
+  let lines;
+  if (s.bankRemaining <= 0) {
+    lines = [s.bankSentAmount > 0 ? `✅ ส่งธนาคารครบ ฿${fmt(s.bankSentAmount)}` : '✅ ไม่มียอดค้างส่งธนาคาร'];
+  } else if (s.bankSentAmount <= 0) {
+    lines = [`⏳ ยังไม่ส่งธนาคาร (ค้างส่ง ฿${fmt(s.bankRemaining)})`];
+  } else {
+    lines = [
+      `📤 ส่งธนาคารเดือนนี้ ฿${fmt(s.bankSentAmount)} / ฿${fmt(s.bankRequired)}`,
+      `⏳ ค้างส่งอีก ฿${fmt(s.bankRemaining)}`,
+    ];
+  }
+  return lines.map(l => indent + l).join('\n');
+}
+
 function buildWaterPreview(s) {
   const { areeUnits, kaidamUnits, totalUnits, pwaBill, meeUnits, meeStandalone, calcRate, lastRate, lastSubUnits, isNear, rateWarning, month, rate } = s;
   const areeAmt   = areeUnits * rate;
@@ -700,7 +716,7 @@ app.post('/webhook', async (req, res) => {
           if (m.thisPaid > 0)             return `⚠️ ${n}`;
           return `❌ ${n}`;
         }).join(' | ');
-        const bankSentLine = bankStatus.bankSent ? `  ✅ ส่งธนาคารแล้ว` : `  ⏳ ยังไม่ส่งธนาคาร`;
+        const bankSentLine = bankSendSummary(bankStatus, '  ');
         // แสดงยอดค้างสะสม (ถ้ามี)
         const arrearEntries = BANK_MEMBERS
           .filter(n => bankStatus.members[n].balance > 0)
@@ -857,7 +873,7 @@ app.post('/webhook', async (req, res) => {
           `🏦 หนี้ธนาคาร ธอส. — ${monthName}\n\n`
           + lines.join('\n')
           + `\n\n💰 รวมได้เดือนนี้: ฿${fmt(status.totalCollected)} / ฿${fmt(BANK_MONTHLY * 4)}`
-          + (status.bankSent ? `\n✅ ส่งธนาคารแล้ว ฿${fmt(status.bankSentAmount)}` : '\n⏳ ยังไม่ได้ส่งธนาคาร')
+          + '\n' + bankSendSummary(status)
           + (totalUnpaid > 0 ? `\n\n💳 ยอดค้างสะสมทั้งหมด: ฿${fmt(totalUnpaid)}` : ''),
           QR_BANK
         );
@@ -963,7 +979,7 @@ app.post('/webhook', async (req, res) => {
         });
         await reply(rt,
           `⏰ ยอดค้างหนี้บ้าน — ${monthName}\n\n` + lines.join('\n')
-          + (status.bankSent ? `\n\n✅ ส่งธนาคารแล้ว` : `\n\n⏳ ยังไม่ส่งธนาคาร`),
+          + '\n\n' + bankSendSummary(status),
           QR_BANK
         );
         continue;
@@ -971,12 +987,20 @@ app.post('/webhook', async (req, res) => {
 
       if (/^ส่งธนาคารแล้ว$/i.test(text)) {
         const status = await getBankStatus();
-        if (status.bankSent) {
-          await reply(rt, `✅ บันทึกส่งธนาคารเดือนนี้แล้วครับ (฿${fmt(status.bankSentAmount)})`, QR_BANK);
+        if (status.bankRemaining <= 0) {
+          await reply(rt, `✅ ส่งธนาคารครบแล้วครับ\n` + bankSendSummary(status), QR_BANK);
           continue;
         }
         SESSION.set(userId, { step: 'bank_sent_amount' });
-        await reply(rt, `🏦 ส่งธนาคารเท่าไหร่ครับ? (ปกติ ฿${fmt(BANK_MONTHLY * 4)})`, QR_GUIDED);
+        const remainText = String(+status.bankRemaining.toFixed(2));
+        const qr = { items: [
+          { type:'action', action:{ type:'message', label:`✅ ส่งครบ ฿${fmt(status.bankRemaining)}`, text: remainText } },
+          ...QR_GUIDED.items,
+        ]};
+        await reply(rt,
+          `🏦 ส่งธนาคารเท่าไหร่ครับ?\n` + bankSendSummary(status),
+          qr
+        );
         continue;
       }
       if (sess?.step === 'bank_sent_amount') {
@@ -984,7 +1008,8 @@ app.post('/webhook', async (req, res) => {
         if (isNaN(amt) || amt <= 0) { await reply(rt, '❌ ใส่ตัวเลขครับ', QR_GUIDED); continue; }
         SESSION.delete(userId);
         await appendBankSent(amt);
-        await reply(rt, `✅ บันทึกส่งธนาคาร ฿${fmt(amt)} แล้วครับ`, QR_BANK);
+        const status = await getBankStatus();
+        await reply(rt, `✅ บันทึกส่งธนาคาร ฿${fmt(amt)} แล้วครับ\n` + bankSendSummary(status), QR_BANK);
         continue;
       }
 
@@ -1341,7 +1366,9 @@ app.post('/webhook', async (req, res) => {
           if (todayDay <= 6) bal = Math.max(0, bal - BANK_MONTHLY); // ยังไม่ถึงกำหนดเดือนนี้
           if (bal > 0) bankOverdue.push(`  ❌ ${name} — ค้าง ฿${fmt(bal)}`);
         }
-        if (!bankStatus.bankSent && todayDay > 6) bankOverdue.push(`  ⏳ ยังไม่ส่งธนาคาร`);
+        let bankSendOwed = bankStatus.bankRemaining;
+        if (todayDay <= 6) bankSendOwed = Math.max(0, bankSendOwed - bankStatus.bankRequired); // ยังไม่ถึงกำหนดเดือนนี้
+        if (bankSendOwed > 0) bankOverdue.push(`  ⏳ ค้างส่งธนาคาร ฿${fmt(bankSendOwed)}`);
 
         // ── 💧 ค่าน้ำพ่วง: ตรวจ dueDate ──────────────────────────────────────
         const waterOverdue = [];
@@ -1619,6 +1646,7 @@ app.get('/debug-all', async (req, res) => {
       bankPaymentRows: payments.map(r=>({date:r[0],month:r[1],name:r[2],amount:r[3]})),
       bankSentRows: sentRows.filter(r=>r[0]&&r[0]!=='วันที่').map(r=>({date:r[0],month:r[1],amount:r[2]})),
       bankSummary,
+      bankStatus: await getBankStatus(),
       rentRows: rentRows.filter(r=>r[0]&&r[0]!=='วันที่').slice(-10).map(r=>({date:r[0],room:r[1],type:r[2],amount:r[3]})),
       waterBills: wBillRows.filter(r=>r[0]&&r[0]!=='เดือน').map(r=>({month:r[0],tenant:r[1],old:r[2],new:r[3],units:r[4],rate:r[5],amount:r[6],due:r[8]})),
       waterPayments: wPayRows.filter(r=>r[0]&&r[0]!=='วันที่').map(r=>({date:r[0],tenant:r[1],month:r[2],amount:r[3]})),
@@ -1810,15 +1838,15 @@ cron.schedule('0 2 6 * *', async () => {
     const THAI_MONTHS = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
     const monthName = THAI_MONTHS[new Date().getMonth() + 1];
     const unpaid = BANK_MEMBERS.filter(n => status.members[n].balance > 0);
-    if (unpaid.length === 0 && status.bankSent) return; // ทุกคนจ่ายครบ + ส่งธนาคารแล้ว
+    if (unpaid.length === 0 && status.bankRemaining <= 0) return; // ทุกคนจ่ายครบ + ส่งธนาคารครบแล้ว
     const lines = BANK_MEMBERS.map(n => {
       const b = status.members[n].balance;
       return b <= 0 ? `✅ ${n} — ชำระครบแล้ว` : `❌ ${n} — ค้าง ฿${fmt(b)}`;
     });
-    if (!status.bankSent) lines.push(`⏳ ยังไม่ได้ส่งธนาคาร`);
+    if (status.bankRemaining > 0) lines.push(bankSendSummary(status));
     const payQR = { items: [
       ...unpaid.map(n => ({ type:'action', action:{ type:'message', label:`✅ ${n}`, text:`เลือกรับเงิน ${n}` } })),
-      ...(!status.bankSent ? [{ type:'action', action:{ type:'message', label:'✅ ส่งธนาคารแล้ว', text:'ส่งธนาคารแล้ว' } }] : []),
+      ...(status.bankRemaining > 0 ? [{ type:'action', action:{ type:'message', label:'✅ ส่งธนาคารแล้ว', text:'ส่งธนาคารแล้ว' } }] : []),
     ]};
     await push(OWNER_ID,
       `⚠️ แจ้งเตือนหนี้บ้าน ธอส. — ${monthName}\n\n${lines.join('\n')}\n\nกรุณาติดตามการชำระเงินครับ`,
